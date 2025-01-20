@@ -1,15 +1,12 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
 import './index.css'
-import Card from './Card'
+import Landing from './Landing';
 
 function App() {
   return (
     <>
-      <Card />
+      <Landing />
     </>
-  )
+  );
 }
 
-export default App
+export default App;

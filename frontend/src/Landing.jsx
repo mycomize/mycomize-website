@@ -1,15 +1,26 @@
-import shroomPic from '/growing-shroom.jpg';
+import { useNavigate } from 'react-router-dom';
+import Header from './Header';
+import Footer from './Footer';
 import Divider from './Divider';
-import githubLogo from '/icons8-github-32.png'
-import instaLogo from '/icons8-instagram-50.png'
-import xLogo from '/icons8-x-logo-30.png'
+import { BTCPayButton, StripePayButton } from './Button';
 
-function Card() {
+import creditCardLogo from '/icons8-credit-card-80.png';
+import bitcoinLogo from '/icons8-bitcoin-logo-50.png'
+
+function Landing() {
+    const navigate = useNavigate();
+
+    const handleStripePay = () => {
+        navigate('/stripe-checkout');
+    };
+    
+    const handleBTCPay = () => {
+        navigate('/btcpay-checkout');
+    }
+
     return (
         <div className="flex flex-col gap-4 h-screen text-slate-300 text-xs m-6">
-            <h1 className="text-red-500 text-2xl text-center">shroomsathome</h1>
-            <img className="rounded-lg" src={shroomPic}/>
-            <p className="text-gray-400 text-center text-xs italic">A concise, step-by-step guide to mushroom cultivation</p>
+            <Header />
             <Divider />
             <ul className="list-inside list-disc">
                <li className="pb-2">Do you want to grow your own mushrooms but are unsure where to start?</li> 
@@ -32,19 +43,11 @@ function Card() {
             When you buy <span className="text-red-500 italic">Shrooms At Home</span>, you get access not only
             to the methods I use today, but also any enhancements or improvements to my methods that I make in the future.
             </p>
-            <div className="mt-auto mb-6">
-                <Divider />
-                <div className="text-center mt-3">
-                    <p>made with &#x1F344; by Connor Davis</p>
-                    <div className="flex flex-row gap-2 items-center justify-center mt-2">
-                        <a href="https://github.com/cjams"><img className="w-6 h-6" src={githubLogo}/></a>
-                        <a href="https://www.instagram.com/cjamsoninsta?igsh=bnJvMWtoc3FueWs5"><img className="w-6 h-6" src={instaLogo}/></a>
-                        <a href="https://x.com/cjamsonx"><img className="w-6 h-6" src={xLogo}/></a>
-                    </div>
-                </div>
-            </div>
+            <StripePayButton handleClick={handleStripePay} text="Pay with stripe" image={creditCardLogo} />
+            <BTCPayButton handleClick={handleBTCPay} text="Pay with bitcoin" image={bitcoinLogo} />
+            <Footer />
         </div>
     );
 }
 
-export default Card;
+export default Landing;
