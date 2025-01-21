@@ -1,10 +1,10 @@
 import './index.css'
-import Landing from './Landing';
+import LandingPage from './LandingPage';
 
 function App() {
   return (
     <>
-      <Landing />
+      <LandingPage />
     </>
   );
 }

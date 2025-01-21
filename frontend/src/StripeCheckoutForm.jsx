@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import creditCardLogo from '/icons8-credit-card-80.png';
+import Divider from './Divider';
 
 const StripeCheckoutForm = () => {
     const stripe = useStripe();
@@ -53,11 +55,14 @@ const StripeCheckoutForm = () => {
     };
     
     return (
-        <form onSubmit={handleSubmit} className="flex flex-col m-3">
-            <label for="email" >Email</label>
-            <input className="pl-3 h-[44px] rounded bg-[#30313d] border border-[#424353] shadow-[#0e0e0f] shadow-md" value={emailInput} onChange={(e => setEmailInput(e.target.value))} type="email" placeholder="email@example.com" id="email" />
+        <form onSubmit={handleSubmit} className="flex flex-col text-sm" method="dialog">
+            <label htmlFor="email" >Email</label>
+            <input className="pl-3 mb-5 h-[44px] mt-1 rounded bg-[#30313d] border border-[#424353] shadow-[#0e0e0f] shadow-md" value={emailInput} onChange={(e => setEmailInput(e.target.value))} type="email" placeholder="email@example.com" id="email" />
+            <Divider />
+            <div className="mb-3"></div>
             <PaymentElement />
-            <button className="inline-flex items-center gap-x-2 mt-6 mb-3 min-w-36 rounded-lg font-semibold px-2 py-1 self-center bg-red-500" type="submit" disabled={!stripe || !elements}> 
+            <button className="inline-flex items-center text-xs gap-x-2 mt-6 mb-3 min-w-36 rounded-lg font-semibold px-2 py-1 self-center bg-indigo-600" type="submit" disabled={!stripe || !elements}> 
+                <img className="max-h-5 max-w-5" src={creditCardLogo} /> 
                 Submit Payment
             </button>
             {/*Show error message, optional */}

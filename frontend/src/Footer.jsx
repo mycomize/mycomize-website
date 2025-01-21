@@ -5,9 +5,9 @@ import Divider from './Divider';
 
 function Footer() {
     return (
-        <div className="mt-auto mb-6">
+        <div className="mt-auto mb-2">
             <Divider />
-            <div className="text-center mt-4 pt-3 pb-5">
+            <div className="text-center mt-4 pb-4 text-xs text-gray-400">
                 <p className="">made with &#x1F344; by Connor Davis</p>
                 <div className="flex flex-row gap-2 items-center justify-center mt-2">
                     <a href="https://github.com/cjams"><img className="w-6 h-6" src={githubLogo}/></a>
