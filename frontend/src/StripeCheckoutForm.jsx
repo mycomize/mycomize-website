@@ -35,7 +35,7 @@ const StripeCheckoutForm = () => {
                 })
             }
         );
-        
+
         const { clientSecret } = await response.json();
         
         const result = await stripe.confirmPayment({
@@ -57,7 +57,17 @@ const StripeCheckoutForm = () => {
     return (
         <form onSubmit={handleSubmit} className="flex flex-col text-sm" method="dialog">
             <label htmlFor="email" >Email</label>
-            <input className="pl-3 mb-5 h-[44px] mt-1 rounded bg-[#30313d] border border-[#424353] shadow-[#0e0e0f] shadow-md" value={emailInput} onChange={(e => setEmailInput(e.target.value))} type="email" placeholder="email@example.com" id="email" />
+            <div className="mt-1 mb-5">
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  placeholder="you@example.com"
+                  value={emailInput}
+                  onChange={(e) => setEmailInput(e.target.value)}
+                  className="block w-full rounded bg-[#30313d] px-3 py-1.5 h-11 text-base text-[#e7e7e9] shadow-md shadow-[#0d0d0f] border border-[#424353] placeholder:text-[#9e9e9e] focus:border focus:border-[#ef4444] focus:outline focus:outline-3 focus:outline-[#ef4444]/25 sm:text-sm/6"
+                />
+            </div>
             <Divider />
             <div className="mb-3"></div>
             <PaymentElement />

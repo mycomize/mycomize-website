@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from './Header';
 import Footer from './Footer';
 import Divider from './Divider';
@@ -12,63 +13,79 @@ export function Title() {
     return <span className="font-semibold text-red-500">shrooms @ home</span>    
 }
 
-const ModalDialog = ({ isOpen, onClose }) => {
-    const dialogRef = useRef(null);
-    
-    useEffect(() => {
-        const dialog = dialogRef.current;
-
-        if (isOpen) {
-            dialog.showModal();
-        } else {
-            dialog.close();
-        }
-    }, [isOpen]);
-    
-    const handleClose = () => {
-        onClose();
-    }
-    
-    const handleCancel = (event) => {
-        event.preventDefault();
-        onClose();
-    }
-    
-    return (
-        <dialog 
-            className="h-fit max-w-72 bg-zinc-900 rounded-md"
-            ref={dialogRef}
-            onClose={handleClose}
-            onCancel={handleCancel}
-        >
-            <StripeCheckoutPage />
-        </dialog>
-    )
-}
+//const ModalDialog = ({ isOpen, onClose }) => {
+//    const dialogRef = useRef(null);
+//    
+//    useEffect(() => {
+//        const dialog = dialogRef.current;
+//
+//        const handleClickOutside = (event) => {
+//            if (event.target === dialog) {
+//                onClose();
+//            }
+//        }; 
+//
+//        if (isOpen) {
+//            dialog.showModal();
+//            document.addEventListener('mousedown', handleClickOutside);
+//        } else {
+//            dialog.close();
+//            document.removeEventListener('mousedown', handleClickOutside);
+//        }
+//        
+//        return () => {
+//            document.removeEventListener('mousedown', handleClickOutside);
+//        };
+//    }, [isOpen, onClose]);
+//    
+//    const handleClose = () => {
+//        onClose();
+//    }
+//    
+//    const handleCancel = (event) => {
+//        event.preventDefault();
+//        onClose();
+//    }
+//    
+//    return (
+//        <dialog 
+//            className="h-fit max-w-72 bg-zinc-900 rounded-md"
+//            ref={dialogRef}
+//            onClose={handleClose}
+//            onCancel={handleCancel}
+//        >
+//            <StripeCheckoutPage />
+//        </dialog>
+//    )
+//}
 
 function LandingPage() {
-    const [stripeModalOpen, setStripeModalOpen] = useState(false);
+//    const [stripeModalOpen, setStripeModalOpen] = useState(false);
+    const navigate = useNavigate();
     
     const handleStripePay = () => {
-        setStripeModalOpen(true);
-        
-        const landing = document.getElementById('landing');
-        landing.style.filter = 'blur(5px)';
+//        setStripeModalOpen(true);
+//        
+//        const landing = document.getElementById('landing');
+//        landing.style.filter = 'blur(5px)';
+        navigate('/stripe-checkout');
     };
 
-    const handleStripeModalClose = () => {
-        setStripeModalOpen(false);
-        
-        const landing = document.getElementById('landing');
-        landing.style.filter = 'none';
-    };
+//    const handleStripeModalClose = () => {
+//        setStripeModalOpen(false);
+//        
+//        const landing = document.getElementById('landing');
+//        landing.style.filter = 'none';
+//    };
+    
+
     
     const handleBTCPay = () => {};
 
     return (
         <>
-            <ModalDialog isOpen={stripeModalOpen} onClose={handleStripeModalClose} />
-            <div id="landing" className="flex flex-col mx-auto px-4 max-w-prose gap-4 h-screen text-slate-300 text-xs m-6">
+{/*            <ModalDialog isOpen={stripeModalOpen} onClose={handleStripeModalClose} /> */}
+            <div id="landing" className="flex flex-col mx-auto px-4 max-w-prose gap-4 h-screen text-slate-200 text-xs m-6">
                 <Header />
                 <Divider />
                 <ul className="list-inside list-disc">
