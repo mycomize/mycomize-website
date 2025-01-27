@@ -2,55 +2,59 @@ import json
 import os
 import stripe
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 app = FastAPI()
-price_id = ''
-FRONTEND_URL = 'http://localhost:5173'
+stripe_price_id = ''
+sah_price = 0.0
+tax_rate = 0.0
+tax = 0.0
+
+# NOTE: be mindful of the protocol (http/https) and port number
+origins = [
+    "http://localhost:5173"
+]
 
 # Add CORS middleware to allow requests from your frontend origin
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL],  # Replace with your frontend's URL
+    allow_origins=origins,  # Replace with your frontend's URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-with open("stripe.json", 'r') as f:
-    stripe_config = json.load(f)
+with open("config.json", 'r') as f:
+    config = json.load(f)
     
-    stripe.api_key = stripe_config['stripe_secret_key']
-    price_id = stripe_config['stripe_price_id']
-
-@app.post("/stripe-create-checkout-session")
-def stripe_create_checkout_session():
-    print("Creating checkout session")
-    try:
-        session = stripe.checkout.Session.create(
-            ui_mode = 'embedded',
-            line_items=[
-                {
-                    'price': price_id,
-                    'quantity': 1,
-                },
-            ],
-            mode='payment',
-            return_url=FRONTEND_URL + '/stripe-checkout-return?session_id={CHECKOUT_SESSION_ID}',
-        )
-    except Exception as e:
-        return {"error": str(e)}
+    stripe.api_key = config['stripe_secret_key']
+    stripe_price_id = config['stripe_price_id']
+    sah_price = config['price']
+    tax_rate = config['tax_rate']
+    tax = sah_price * tax_rate
     
-    return {"clientSecret": session.client_secret}
+    print(f"Loaded config: stripe_price_id={stripe_price_id} sah_price={sah_price} tax_rate={tax_rate} tax={tax}")
 
-@app.get("/stripe-session-status")
-def stripe_session_status(session_id: str):
-    print("Checking session status")
-    session = stripe.checkout.Session.retrieve(session_id)
 
-    return {"status": session.status, "customer_email": session.customer_details.email}
+#
+# API Endpoints
+#
+
+@app.post("/checkout")
+async def checkout(request: Request):
+    body = await request.json()
+    payment_type = body['type']
+    customer_email = body['email']
+    
+    print(f"POST: /checkout: payment_type={payment_type} customer_email={customer_email}")
+
+@app.get("/price")
+def price():
+    print(f"GET: /price: price={sah_price} tax={tax}")
+    return {"price": sah_price, "tax": tax}
 
 @app.get("/")
 async def root():
