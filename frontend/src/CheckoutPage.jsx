@@ -1,8 +1,7 @@
 import { useEffect, useState } from "react";
 
 import Footer from "./Footer";
-import Divider from "./Divider";
-import { DividerDark } from "./Divider";
+import Divider, { DividerDark } from "./Divider";
 
 import shroomPic from "/growing-shroom.jpg";
 import kindleLogo from "/icons8-amazon-kindle-50.png";
@@ -63,7 +62,9 @@ export function CheckoutPage() {
     console.log(payOption);
 
     const data = await checkout(email, payOption);
+
     console.log(data);
+    window.location.href = data.checkoutLink;
   };
 
   const handlePayClick = (event) => {
