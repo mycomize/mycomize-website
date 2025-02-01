@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String
+from sqlalchemy import create_engine, Column, String
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 
@@ -14,7 +14,7 @@ class Invoice(Base):
     email = Column(String, primary_key=True)
     payment_type = Column(String, nullable=False)
     btcpay_invoice_id = Column(String, nullable=True, index=True)
-    btcpay_invoice_status = Column(String, nullable=True)
+    btcpay_invoice_state = Column(String, nullable=True)
     
 Base.metadata.create_all(bind=engine)
 

@@ -1,3 +1,5 @@
 fastapi[standard]
 pydantic
 stripe
+sqlalchemy
+httpx
