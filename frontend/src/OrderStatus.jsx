@@ -8,14 +8,8 @@ import Divider from "./Divider";
 async function getInvoice(invoice_id) {
     try {
         // TODO: move body into query parameter
-        const url = import.meta.env.VITE_BACKEND_URL + "/invoice";
-        const response = await fetch(url, {
-            method: "GET",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({ invoice_id: invoice_id })
-        });
+        const url = import.meta.env.VITE_BACKEND_URL + `/invoice?invoice_id=${invoice_id}`;
+        const response = await fetch(url, { method: "GET" });
         
         if (response.ok) {
             return await response.json();
@@ -31,27 +25,37 @@ async function getInvoice(invoice_id) {
 }
 
 export function OrderStatus() {
-    const [invoiceEmail, setInvoiceEmail] = useState("");
     const [invoiceState, setInvoiceState] = useState("");
     const [searchParams, setSearchParams] = useSearchParams();
+
     const type = searchParams.get("type");
+    const clientInvoiceId = searchParams.get("invoice_id");
 
     useEffect(() => {
-        const getInvoiceState = async () => {
-            if (type === "btc") {
-                const invoice_id = searchParams.get("invoice_id");
-                const invoice = await getInvoice(invoice_id);
-                    
-                setInvoiceEmail(invoice.email);
-                setInvoiceState(invoice.state);
-            }
+        if (type === "btc") {
+            const url = import.meta.env.VITE_BACKEND_URL + `/btcpay-webhook-events?invoice_id=${clientInvoiceId}`
+            const eventSource = new EventSource(url);
+            
+            eventSource.onmessage = (event) => {
+                console.log(`Received new btcpay webhook data: ${event.data}`);
+                const webhookData = JSON.parse(event.data);
+
+                setInvoiceState(webhookData.state);
+            };
+            
+            eventSource.onerror = (error) => {
+                console.error("EventSource failed:", error);
+            };
+            
+            return () => {
+                eventSource.close();
+            };
         }
-        
-        getInvoiceState();
     }, []);
     
     if (type == "btc") {
-        return <OrderStatusBTC email={invoiceEmail} state={invoiceState} />    
+        // If state is Settled, send an email with the ePub
+        return <OrderStatusBTC state={invoiceState} invoice_id={clientInvoiceId} />    
     } 
 }
 
@@ -62,8 +66,8 @@ function OrderStatusBTC(props) {
             <Divider />
             <h1>Order Status: {props.state}</h1>
             <p>
-                Once payment has settled we will send an email to {props.email} with the
-                guide!
+                Once payment has settled we will send the guide to the email you provided. 
+                Your invoice ID is {props.invoice_id}. Please keep it for your records.
             </p>
             <Footer />
         </div>
