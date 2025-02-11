@@ -1,13 +1,13 @@
+import asyncio
 import hashlib
 import hmac
 import httpx
 import json
-import os
 import stripe
 
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -20,6 +20,9 @@ sah_price = 0.0
 tax_rate = 0.0
 tax = 0.0
 btcpay_api_key = ''
+
+btcpay_webhook_queue_map = {}
+btcpay_webhook_lock = asyncio.Lock()
 
 FRONTEND_DEV_HTTP_URL = "http://localhost:5173"
 FRONTEND_PROD_HTTPS_URL = "https://shroomsathome.com"
@@ -65,7 +68,7 @@ async def create_btcpay_invoice(customer_email):
     data = {
         "metadata": {
             "buyerEmail": customer_email,
-            "itemDesc": "mushroom cultivation guide",
+            "itemDesc": "Mushroom Cultivation Guide",
             "taxIncluded": tax,
             "posData": {
                "sub_total": sah_price,
@@ -75,6 +78,8 @@ async def create_btcpay_invoice(customer_email):
         "checkout": {
             "speedPolicy": "MediumSpeed", # 1 confirmation
             "paymentMethods": ["BTC", "BTC-LightningNetwork"],
+            # TODO: change me
+            "expirationMinutes": 1,
             # TODO: update frontend
             "redirectURL": FRONTEND_PROD_HTTPS_URL + "/order-status?type=btc&invoice_id={InvoiceId}",
             "redirectAutomatically": True,
@@ -131,7 +136,6 @@ async def checkout(request: Request, db: Session = Depends(get_invoice_db)):
                 invoice_state = invoice["status"]
 
                 print(f"BTCPay new invoice: id={invoice_id} state={invoice_state} email={customer_email}")  
-                print(f"BTCPay new invoice: adding DB entry")  
 
                 db_entry = Invoice(email=customer_email,
                                    payment_type=payment_type,
@@ -142,7 +146,10 @@ async def checkout(request: Request, db: Session = Depends(get_invoice_db)):
                 db.commit()
                 db.refresh(db_entry)
                 
-                dump_invoice_db(db)
+                async with btcpay_webhook_lock:
+                    if invoice_id not in btcpay_webhook_queue_map:
+                        btcpay_webhook_queue_map[invoice_id] = asyncio.Queue()
+                
                 return { "checkoutLink": invoice["checkoutLink"] }
         except SQLAlchemyError as e:
             print(f"SQLAlchemy error: {e}")
@@ -168,15 +175,32 @@ async def btcpay_webhook(request: Request, db: Session = Depends(get_invoice_db)
             invoice.btcpay_invoice_state = webhook_type
             db.commit()
             print(f"BTCPay invoice: status updated to {webhook_type} for {email}")
+            
+            async with btcpay_webhook_lock:
+                queue = btcpay_webhook_queue_map[invoice_id]
+                await queue.put({"state": webhook_type}) 
         else:
-            print(f"Recieved webhook {webhook_type} for {email} not present in invoices DB")
+            print(f"Received webhook {webhook_type} for {email} not present in invoices DB")
     else:
         print(f"BTCPay webhook HMAC verification failed")
 
+async def dequeue_btcpay_webhook_data(invoice_id: str):
+    while True:
+        try:
+            async with btcpay_webhook_lock:
+                queue = btcpay_webhook_queue_map[invoice_id]
+                data = await asyncio.wait_for(queue.get(), timeout=0.5)
+            json_data = json.dumps(data)
+            yield f"data: {json_data}\n\n"
+        except asyncio.TimeoutError:
+            continue
+
+@app.get("/btcpay-webhook-events")
+async def btcpay_webhook_events(invoice_id: str):
+    return StreamingResponse(dequeue_btcpay_webhook_data(invoice_id), media_type="text/event-stream")
+
 @app.get("/invoice")
-async def get_invoice(request: Request, db: Session = Depends(get_invoice_db)):
-    data = await request.json()
-    invoice_id = data["invoice_id"]
+async def get_invoice(invoice_id: str, db: Session = Depends(get_invoice_db)):
     invoice = db.query(Invoice).filter(Invoice.btcpay_invoice_id == invoice_id).first()
     
     if invoice:
@@ -194,6 +218,10 @@ def get_price():
 async def get_root():
     return {"message": "Hello World"}
 
-@app.get("/.env")
+@app.get('/.env')
 async def get_env():
     return {"message": "fuck off"}
+
+@app.get('/.git/config')
+async def get_git_config():
+    return {"message": "yourmom"}
