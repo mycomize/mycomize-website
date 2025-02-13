@@ -153,6 +153,42 @@ async def checkout(request: Request, db: Session = Depends(get_invoice_db)):
                 return { "checkoutLink": invoice["checkoutLink"] }
         except SQLAlchemyError as e:
             print(f"SQLAlchemy error: {e}")
+    elif payment_type == "stripe":
+        try:
+            invoice = db.query(Invoice).filter(Invoice.email == customer_email).first()
+            if invoice:
+                # TODO fixme
+                return {""}
+            else:
+                success_url = FRONTEND_PROD_HTTPS_URL + "/order-status?type=stripe&session_id={CHECKOUT_SESSION_ID}"
+                cancel_url = FRONTEND_PROD_HTTPS_URL
+
+                checkout_session = stripe.checkout.Session.create(
+                    line_items=[{"price": stripe_price_id, "quantity": 1}],
+                    mode='payment',
+                    success_url=success_url,
+                    cancel_url=cancel_url,
+                    customer_email=customer_email
+                )
+                
+                invoice_id = checkout_session.id
+                invoice_state = checkout_session.payment_status
+                
+                print(f"Stripe new invoice: id={invoice_id} state={invoice_state} email={customer_email}")
+                
+                db_entry = Invoice(email=customer_email,
+                                   payment_type=payment_type,
+                                   btcpay_invoice_id=invoice_id,
+                                   btcpay_invoice_state=invoice_state)
+
+                db.add(db_entry)
+                db.commit()
+                db.refresh(db_entry)
+                
+                return { "checkoutLink": checkout_session.url }
+                
+        except SQLAlchemyError as e:
+            print(f"SQLAlchemy error: {e}")
         
 @app.post("/btcpay-webhook")
 async def btcpay_webhook(request: Request, db: Session = Depends(get_invoice_db)):
