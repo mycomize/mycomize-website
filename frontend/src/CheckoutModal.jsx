@@ -43,7 +43,7 @@ export const CheckoutModal = ({ isOpen, onClose }) => {
       onClose={handleClose}
       onCancel={handleCancel}
     >
-      <CheckoutPage />
+      <CheckoutPage onClose={handleClose} />
     </dialog>
   );
 };

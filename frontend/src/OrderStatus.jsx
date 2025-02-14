@@ -20,28 +20,26 @@ async function getInvoice(invoice_id) {
         console.error(`Exception getting invoice_id ${invoice_id}: ${error}`)
         return null
     }
-
 }
 
 export function OrderStatus() {
-    const [invoiceState, setInvoiceState] = useState("");
-    const [invoiceId, setInvoiceId] = useState("");
+    const [orderState, setOrderState] = useState("");
     const [searchParams, setSearchParams] = useSearchParams();
 
     const type = searchParams.get("type");
+    const order_id = searchParams.get("order_id");
 
     useEffect(() => {
         if (type === "btc") {
-            setInvoiceId(searchParams.get("invoice_id"));
-
-            const url = import.meta.env.VITE_BACKEND_URL + `/btcpay-webhook-events?invoice_id=${invoiceId}`
+            const invoiceId = searchParams.get("invoice_id");
+            const url = import.meta.env.VITE_BACKEND_URL + `/btcpay-webhook-events?invoice_id=${invoiceId}`;
             const eventSource = new EventSource(url);
             
             eventSource.onmessage = (event) => {
                 console.log(`Received new btcpay webhook data: ${event.data}`);
                 const webhookData = JSON.parse(event.data);
 
-                setInvoiceState(webhookData.state);
+                setOrderState(webhookData.order_state);
             };
             
             eventSource.onerror = (error) => {
@@ -52,50 +50,60 @@ export function OrderStatus() {
                 eventSource.close();
             };
         } else if (type === "stripe") {
-            setInvoiceId(searchParams.get("session_id"));
+            const sessionId = searchParams.get("session_id");
+            const url = import.meta.env.VITE_BACKEND_URL + `/stripe-webhook-events?session_id=${sessionId}`;
+            const eventSource = new EventSource(url);
             
-            // implement webhhok / payment status check
+            eventSource.onmessage = (event) => {
+                console.log(`Received new stripe webhook data: ${event.data}`);
+                const webhookData = JSON.parse(event.data);
+
+                setOrderState(webhookData.order_state);
+            };
             
+            eventSource.onerror = (error) => {
+                console.error("EventSource failed:", error);
+            };
+            
+            return () => {
+                eventSource.close();
+            };
         }
     }, []);
     
-    if (type === "btc") {
-        // If state is Settled, send an email with the ePub
-        return <OrderStatusBTC state={invoiceState} invoice_id={invoiceId} />    
-    } else if (type === "stripe") {
-        // TODO: implement state update for stripe
-        return <OrderStatusStripe state={invoiceState} invoice_id={invoiceId} />
+    if (type === "btc" || type === "stripe") {
+        return <OrderStatusPage order_type={type} order_state={orderState} order_id={order_id} />    
+    } else {
+       return <><h1>404 Not Found</h1></>
     }
 }
 
-function OrderStatusBTC(props) {
+function OrderStatusPage(props) {
+    const type = (props.order_type === 'btc') ? "BTC" : "Stripe";
+    let status = '';
+
+    if (props.order_state === 'Fulfilled') {
+        status = <h2 className="font-bold text-lg">Order Status: Fulfilled &#x2705;</h2>;
+    } else if (props.order_state === 'Settled') {
+        status = <h2 className="font-bold text-lg">Order Status: Settled &#x1f4b0;</h2>;
+    } else if (props.order_state === 'Processing Payment') {
+        status = <h2 className="font-semibold text-lg">Order Status: Processing Payment &#x231b;</h2>;
+    } else if (props.order_state === "Expired") {
+        status = <h2 className="font-semibold text-lg">Order Status: Invoice Expired &#x23f0;</h2>;
+    }
+
     return (
         <div className="flex flex-col mx-auto px-4 max-w-prose gap-4 h-screen text-slate-200 text-xs m-6">
             <Header />
             <Divider />
-            <h1>Order Status: {props.state}</h1>
-            <p>
-                Once payment has settled we will send the guide to the email you provided. 
-                Your invoice ID is {props.invoice_id}. Please keep it for your records.
+            <h1 className="font-bold text-lg">Thank You</h1>
+            {status}
+            <p className="text-sm">
+                Once your {type} payment has settled we will send the guide to the email you provided. 
+                <br/><br/>Your Order ID is: <strong>{props.order_id}</strong>
+                <br/><br/> Please keep it for your records.
             </p>
             <Footer />
         </div>
     );
 }
-
-function OrderStatusStripe(props) {
-    return (
-        <div className="flex flex-col mx-auto px-4 max-w-prose gap-4 h-screen text-slate-200 text-xs m-6">
-            <Header />
-            <Divider />
-            <h1>Order Status: {props.state}</h1>
-            <p>
-                Once payment has settled we will send the guide to the email you provided. 
-                Your invoice ID is {props.invoice_id}. Please keep it for your records.
-            </p>
-            <Footer />
-        </div>
-    );
-}
-
-

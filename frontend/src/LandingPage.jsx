@@ -31,7 +31,7 @@ function LandingPage() {
             <CheckoutModal isOpen={modalOpen} onClose={handleModalClose} />
             <div
                 id="landing"
-                className="flex flex-col mx-auto px-4 max-w-prose gap-4 h-screen text-slate-200 text-xs m-6"
+                className="flex flex-col mx-auto px-4 max-w-prose gap-4 h-screen text-slate-200 text-sm m-6"
             >
                 <Header />
                 <Divider />
@@ -45,7 +45,7 @@ function LandingPage() {
                         information found online?
                     </li>
                 </ul>
-                <p>
+                <p className="mb-8">
                     <Title /> is a concise yet complete guide for growing
                     mushrooms at home. It distills the vast sea of cultivation
                     information found online into a{" "}
