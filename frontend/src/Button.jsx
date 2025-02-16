@@ -32,7 +32,7 @@ export function BTCPayButton(props) {
 export function GrowButton(props) {
   return (
     <button
-      className="inline-flex items-center justify-center gap-x-3 min-h-14 min-w-38 max-w-38 rounded font-semibold text-lg px-2 py-1 self-center bg-red-500 shadow-md shadow-black hover:border-2 hover:bg-[#19191a] hover:border-red-500 hover:text-red-500"
+      className="inline-flex items-center justify-center my-auto gap-x-3 min-h-14 min-w-38 max-w-38 rounded font-semibold text-lg px-2 py-1 self-center bg-red-500 shadow-md shadow-black hover:border-2 hover:bg-[#19191a] hover:border-red-500 hover:text-red-500"
       onClick={props.onClick}
     >
       &#x1F344; Start growing now
@@ -40,7 +40,7 @@ export function GrowButton(props) {
   );
 }
 
-export function OrderExistsButton(props) {
+export function OKButton(props) {
   return (
     <button
       className="w-full inline-flex items-center justify-center gap-x-3 min-h-10 min-w-38 max-w-38 rounded font-semibold text-lg px-2 py-1 self-center bg-red-500 shadow-md shadow-black hover:border-2 hover:bg-[#19191a] hover:border-red-500 hover:text-red-500"
@@ -51,4 +51,16 @@ export function OrderExistsButton(props) {
     </button>
     
   )
+}
+
+export function TryAgainButton(props) {
+  return (
+    <button
+      className="inline-flex items-center justify-center my-auto gap-x-3 h-14 w-48 rounded font-semibold text-lg px-2 py-1 self-center bg-red-500 shadow-md shadow-black hover:border-2 hover:bg-[#19191a] hover:border-red-500 hover:text-red-500"
+      onClick={props.onClick}
+    >
+      Try Again
+    </button>
+  );
+  
 }

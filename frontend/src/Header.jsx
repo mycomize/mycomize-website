@@ -10,7 +10,7 @@ import mush4 from '/mush4.jpg';
 function Header() {
     return (
     <>
-        <h1 className="text-red-500 text-2xl text-center">shrooms @ home</h1>
+        <h1 className="text-red-500 text-2xl text-center">shrooms@home</h1>
         <div className="flex gap-4 overflow-clip">
         <div className="flex gap-4 animate-swipe">
             <img className="rounded-md max-w-64 w-48 h-32" src={mush0}/>
