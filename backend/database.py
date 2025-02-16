@@ -15,6 +15,7 @@ class Invoice(Base):
     payment_type = Column(String, nullable=False)
     order_id = Column(String, nullable=False, index=True)
     order_state = Column(String, nullable=False)
+    order_link = Column(String, nullable=False)
     btcpay_invoice_id = Column(String, nullable=True, index=True)
     btcpay_invoice_state = Column(String, nullable=True)
     stripe_session_id = Column(String, nullable=True, index=True)
