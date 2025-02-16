@@ -7,16 +7,17 @@ import string
 import stripe
 import secrets
 
+from email_validator import validate_email, EmailNotValidError
+
 from fastapi import FastAPI, Depends, HTTPException, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse, StreamingResponse
 from pydantic import BaseModel
+from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
 from database import Invoice, get_invoice_db, dump_invoice_db
-
-app = FastAPI()
 
 btcpay_webhook_queue_map = {}
 stripe_webhook_queue_map = {}
@@ -32,6 +33,8 @@ origins = [
     FRONTEND_DEV_HTTP_URL,
     FRONTEND_PROD_HTTPS_URL
 ]
+
+app = FastAPI()
 
 # Add CORS middleware to allow requests from your frontend origin
 app.add_middleware(
@@ -63,8 +66,11 @@ with open("config.json", 'r') as f:
     
     print(f"Loaded config: stripe_price_id={stripe_price_id} sah_price={sah_price} tax_rate={tax_rate} tax={tax}")
     
+#
+# Helpers 
+#
 def create_order_id(length=8):
-    characters = string.ascii_letters + string.digits
+    characters = string.ascii_uppercase + string.digits
     return ''.join(secrets.choice(characters) for _ in range(length))
 
 def fulfill_order(email, order_id):
@@ -113,10 +119,10 @@ async def create_btcpay_invoice(customer_email, order_id):
     else:
         if response.status_code == 400:
             data = response.json()
-            print(f"Create invoice failed: path={data[0]} message={data[1]}")
+            print(f"Create invoice failed: path={data[0]} message={data[1]} email={customer_email}")
         elif response.status_code == 403:
-            print(f"Create invoice failed: authenticated but forbidden to add invoices")
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+            print(f"Create invoice failed: authenticated but forbidden to add invoices, email={customer_email}")
+        return {"error": "error_create_btcpay_invoice_failed"}
 
 def verify_btcpay_webhook(body_bytes, btcpay_sig_str, webhook_secret_str):
     computed_hash = hmac.new(
@@ -128,6 +134,137 @@ def verify_btcpay_webhook(body_bytes, btcpay_sig_str, webhook_secret_str):
     computed_hash = "sha256=" + computed_hash
     return hmac.compare_digest(computed_hash, btcpay_sig_str)
 
+def invoice_settled(invoice):
+    return invoice.order_state == "Settled"
+
+def invoice_fulfilled(invoice):
+    return invoice.order_state == "Fulfilled"
+
+def invoice_processing(invoice):
+    return invoice.order_state == "Processing Payment"
+
+def invoice_failed(invoice):
+    return invoice.order_state == "Failed"
+
+def invoice_expired(invoice):
+    return invoice.order_state == "Expired"
+
+def invoice_canceled(invoice):
+    return invoice.order_state == "Canceled"
+
+async def checkout_btc(email, order_id, db):
+    try:
+        invoice = db.query(Invoice).filter(Invoice.email == email).first()
+        
+        if invoice:
+            async with invoice_lock:
+                if invoice.payment_type == 'btc':
+                    if invoice_settled(invoice) or invoice_fulfilled(invoice):
+                        return {"order_state": invoice.order_state}
+                    elif invoice_processing(invoice):
+                        return {"checkout_link": invoice.order_link} 
+                    else: # Failed or Expired or Canceled
+                        print(f"Invoice (btcpay): invoice_id={invoice.btcpay_invoice_id} state={invoice.btcpay_invoice_state} email={email} (failed/expired) deleting from DB")
+                        db.delete(invoice)
+                        db.commit()
+                else:
+                    print(f"Invoice (btcpay): email={email} already has a stripe invoice. Only one payment type supported")
+                    return {"error": "error_only_one_payment_type_supported"}
+    
+        invoice = await create_btcpay_invoice(email, order_id)
+        if "error" in invoice:
+            return invoice
+
+        invoice_id = invoice["id"]
+        invoice_state = invoice["status"]
+    
+        print(f"Invoice (btcpay): order_id={order_id} invoice_id={invoice_id} state={invoice_state} email={email} (new)")
+    
+        db_entry = Invoice(email=email,
+                           payment_type='btc',
+                           order_id=order_id,
+                           order_state="Processing Payment",
+                           order_link=invoice["checkoutLink"],
+                           btcpay_invoice_id=invoice_id,
+                           btcpay_invoice_state=invoice_state)
+    
+        db.add(db_entry)
+        db.commit()
+    
+        async with btcpay_webhook_lock:
+            if invoice_id not in btcpay_webhook_queue_map:
+                btcpay_webhook_queue_map[invoice_id] = asyncio.Queue()
+    
+        return { "checkout_link": invoice["checkoutLink"] }
+    except SQLAlchemyError as e:
+        print(f"error_db_btc: {e}, email={email}")
+        return {"error": f"error_db_btc: {e}"}
+    except Exception as e:
+        print(f"error_checkout_btc: {e}, email={email}")
+        return {"error": f"error_checkout_btc"}
+    
+async def checkout_stripe(email, order_id, db):
+    try:
+        invoice = db.query(Invoice).filter(Invoice.email == email).first()
+
+        if invoice:
+            async with invoice_lock:
+                if invoice.payment_type == 'stripe':
+                    if invoice_fulfilled(invoice) or invoice_settled(invoice):
+                        return {
+                            "order_state": invoice.order_state
+                        }
+                    elif invoice_processing(invoice):
+                        return {
+                            "checkout_link": checkout_session.url
+                        }
+                    else: # Failed or Expired or Canceled
+                        print(f"Invoice (stripe): session_id={invoice.stripe_session_id} state={invoice.stripe_invoice_state} email={email} (failed/expired) deleting from DB")
+                        db.delete(invoice)
+                        db.commit()
+                else:
+                    print(f"Invoice (stripe): email={email} already has a btc invoice. Only one payment type supported")
+                    return {"error": "error_only_one_payment_type_supported"}
+
+        success_url = FRONTEND_PROD_HTTPS_URL + "/order-status?type=stripe&order_id=" + order_id + "&session_id={CHECKOUT_SESSION_ID}"
+        cancel_url = FRONTEND_PROD_HTTPS_URL
+
+        checkout_session = stripe.checkout.Session.create(
+            line_items=[{"price": stripe_price_id, "quantity": 1}],
+            mode='payment',
+            success_url=success_url,
+            cancel_url=cancel_url,
+            customer_email=email,
+            metadata={"order_id": order_id}
+        )
+
+        session_id = checkout_session.id
+        invoice_state = checkout_session.payment_status
+
+        print(f"Invoice (stripe): order_id={order_id} session_id={session_id} state={invoice_state} email={email} (new)")
+
+        db_entry = Invoice(email=email,
+                           payment_type='stripe',
+                           order_id=order_id,
+                           order_state="Processing Payment",
+                           order_link=checkout_session.url,
+                           stripe_session_id=session_id,
+                           stripe_invoice_state=invoice_state)
+        db.add(db_entry)
+        db.commit()
+        
+        async with stripe_webhook_lock:
+            if session_id not in stripe_webhook_queue_map:
+                stripe_webhook_queue_map[session_id] = asyncio.Queue()
+
+        return { "checkout_link": checkout_session.url }
+    except SQLAlchemyError as e:
+        print(f"error_db_stripe: {e}, email={email}")
+        return {"error": f"error_db_stripe: {e}"}
+    except Exception as e:
+        print(f"error_checkout_stripe: {e}, email={email}")
+        return {"error": f"error_checkout_stripe"}
+            
 #
 # API Endpoints
 #
@@ -136,86 +273,28 @@ async def checkout(request: Request, db: Session = Depends(get_invoice_db)):
     body = await request.json()
     payment_type = body['type']
     customer_email = body['email']
+    order_id = create_order_id()
     
     print(f"POST: /checkout: payment_type={payment_type} customer_email={customer_email}")
     
     if payment_type != 'btc' and  payment_type != 'stripe':
+        print(f"POST: /checkout: error_invalid_payment_type: {payment_type}")
         return {"error": "error_invalid_payment_type"}
-
-    order_id = create_order_id()
+    
+    try:
+        # Not checking deliverability for now for testing purposes
+        email_info = validate_email(customer_email, check_deliverability=False)
+        customer_email = email_info.normalized
+    except EmailNotValidError as e:
+        print(f"POST: /checkout: error_invalid_email_syntax: {e}")
+        return {"error": "error_invalid_email_syntax"}
 
     if payment_type == 'btc':
-        try:
-            invoice = db.query(Invoice).filter(Invoice.email == customer_email).first()
-            # TODO: handle expired retries...
-            if invoice:
-                return {
-                    "order_state": invoice.order_state
-                }
-            else:
-                invoice = await create_btcpay_invoice(customer_email, order_id)
-                invoice_id = invoice["id"]
-                invoice_state = invoice["status"]
+        return await checkout_btc(customer_email, order_id, db)
+    
+    if payment_type == 'stripe':
+        return await checkout_stripe(customer_email, order_id, db)
 
-                print(f"New invoice (btcpay): order_id={order_id} invoice_id={invoice_id} state={invoice_state} email={customer_email}")
-
-                db_entry = Invoice(email=customer_email,
-                                   payment_type=payment_type,
-                                   order_id=order_id,
-                                   order_state="Processing Payment",
-                                   btcpay_invoice_id=invoice_id,
-                                   btcpay_invoice_state=invoice_state)
-                db.add(db_entry)
-                db.commit()
-
-                async with btcpay_webhook_lock:
-                    if invoice_id not in btcpay_webhook_queue_map:
-                        btcpay_webhook_queue_map[invoice_id] = asyncio.Queue()
-
-                return { "checkout_link": invoice["checkoutLink"] }
-        except SQLAlchemyError as e:
-            return {"error": f"error_db_btc: {e}"}
-    elif payment_type == "stripe":
-        try:
-            invoice = db.query(Invoice).filter(Invoice.email == customer_email).first()
-            if invoice:
-                return {
-                    "order_state": invoice.order_state
-                }
-            else:
-                success_url = FRONTEND_PROD_HTTPS_URL + "/order-status?type=stripe&order_id=" + order_id + "&session_id={CHECKOUT_SESSION_ID}"
-                cancel_url = FRONTEND_PROD_HTTPS_URL
-
-                checkout_session = stripe.checkout.Session.create(
-                    line_items=[{"price": stripe_price_id, "quantity": 1}],
-                    mode='payment',
-                    success_url=success_url,
-                    cancel_url=cancel_url,
-                    customer_email=customer_email,
-                    metadata={"order_id": order_id}
-                )
-
-                session_id = checkout_session.id
-                invoice_state = checkout_session.payment_status
-
-                print(f"New invoice (stripe): order_id={order_id} session_id={session_id} state={invoice_state} email={customer_email}")
-
-                db_entry = Invoice(email=customer_email,
-                                   payment_type=payment_type,
-                                   order_id=order_id,
-                                   order_state="Processing Payment",
-                                   stripe_session_id=session_id,
-                                   stripe_invoice_state=invoice_state)
-                db.add(db_entry)
-                db.commit()
-                
-                async with stripe_webhook_lock:
-                    if session_id not in stripe_webhook_queue_map:
-                        stripe_webhook_queue_map[session_id] = asyncio.Queue()
-
-                return { "checkout_link": checkout_session.url }
-        except SQLAlchemyError as e:
-            return {"error": f"error_db_stripe: {e}"}
 
 @app.post("/stripe-webhook")
 async def stripe_webhook(request: Request, db: Session = Depends(get_invoice_db)):
@@ -234,23 +313,23 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_invoice_db)
         # Invalid signature
         raise HTTPException(status_code=400, detail=f"Invalid signature: {e}")
     
-    if event['type'] == 'checkout.session.completed' or event['type'] == 'checkout.session.async_payment_succeeded':
-        session_id = event['data']['object']['id']
-        state = event['data']['object']['payment_status']
-        email = event['data']['object']['customer_email']
-        invoice = db.query(Invoice).filter(Invoice.email == email).first()
+    session_id = event['data']['object']['id']
+    payment_state = event['data']['object']['payment_status']
+    email = event['data']['object']['customer_email']
+    invoice = db.query(Invoice).filter(Invoice.email == email).first()
 
+    if event['type'] == 'checkout.session.completed' or event['type'] == 'checkout.session.async_payment_succeeded':
         if invoice:
             async with invoice_lock:
                 invoice_state = invoice.stripe_invoice_state
                 if invoice_state == 'paid':
-                    print(f"Invoice (stripe): received webhook {event['type']} but state={invoice_state}. Doing nothing")
+                    print(f"Invoice (stripe): received webhook {event['type']} but state={invoice_state}. Doing nothing. email={email}")
                     return
 
-                invoice.stripe_invoice_state = state
-                print(f"Invoice (stripe): state updated to {state} for {email}")
+                invoice.stripe_invoice_state = payment_state
+                print(f"Invoice (stripe): state updated to {payment_state} for {email}")
                 
-                if state == 'paid':
+                if payment_state == 'paid':
                     invoice.order_state = "Settled"
                     success = fulfill_order(email, invoice.order_id)
                     
@@ -259,6 +338,8 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_invoice_db)
                     else:
                         # TODO: Alarm on this to myself
                         pass
+                else: # unpaid
+                    invoice.order_state = "Canceled" 
 
                 db.commit()
 
@@ -266,19 +347,54 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_invoice_db)
                 async with stripe_webhook_lock:
                     queue = stripe_webhook_queue_map[session_id]
                     await queue.put({"order_state": invoice.order_state})
-
         else:
             print(f"Received webhook {event['type']} for {email} not present in invoices DB")
+    elif event['type'] == 'checkout.session.async_payment_failed':
+        if invoice:
+            async with invoice_lock:
+                invoice_state = invoice.stripe_invoice_state
+                if invoice_state == 'paid':
+                    print(f"Invoice (stripe): received webhook {event['type']} but state={invoice_state}. Doing nothing. email={email}")
+                    return
+
+                invoice.order_state = "Failed"
+                db.commit()
+
+                # Notify the frontend
+                async with stripe_webhook_lock:
+                    queue = stripe_webhook_queue_map[session_id]
+                    await queue.put({"order_state": invoice.order_state})
+        else:
+            print(f"Received webhook {event['type']} for {email} not present in invoices DB")
+    else: # checkout.session.expired
+        if invoice:
+            async with invoice_lock:
+                invoice_state = invoice.stripe_invoice_state
+                if invoice_state == 'paid':
+                    print(f"Invoice (stripe): received webhook {event['type']} but state={invoice_state}. Doing nothing. email={email}")
+                    return
+
+                invoice.order_state = "Expired"
+                db.commit()
+
+                # Notify the frontend
+                async with stripe_webhook_lock:
+                    queue = stripe_webhook_queue_map[session_id]
+                    await queue.put({"order_state": invoice.order_state})
 
 async def dequeue_stripe_webhook_data(session_id: str):
+    if session_id == None or session_id == "":
+        yield f"event: error\ndata: session_id is empty\n\n"
+
     while True:
         try:
             async with stripe_webhook_lock:
                 if session_id in stripe_webhook_queue_map:
                     queue = stripe_webhook_queue_map[session_id]
                     data = await asyncio.wait_for(queue.get(), timeout=0.5)
-
                     yield f"data: {json.dumps(data)}\n\n"
+                else:
+                    yield f"event: error\ndata: invoice not found in stripe_webhook_queue_map\n\n"
         except asyncio.TimeoutError:
             continue
 
@@ -292,9 +408,7 @@ async def btcpay_webhook(request: Request, db: Session = Depends(get_invoice_db)
     body_bytes = await request.body()
 
     if verify_btcpay_webhook(body_bytes, btcpay_sig_str, btcpay_webhook_secret):
-        print(f"BTCPay webhook HMAC verified")
         json = await request.json()
-
         state = json['type'] 
         invoice_id = json['invoiceId'] 
         metadata = json['metadata']
@@ -307,7 +421,7 @@ async def btcpay_webhook(request: Request, db: Session = Depends(get_invoice_db)
             async with invoice_lock:
                 invoice_state = invoice.btcpay_invoice_state
                 if invoice_state == "InvoiceSettled":
-                    print(f"Invoice (btcpay): received webhook {state} but state={invoice_state}. Doing nothing")
+                    print(f"Invoice (btcpay): received webhook {state} but state={invoice_state}. Doing nothing. email={email}")
                     return
 
                 invoice.btcpay_invoice_state = state
@@ -323,10 +437,11 @@ async def btcpay_webhook(request: Request, db: Session = Depends(get_invoice_db)
                         # TODO: Need to alarm on this to myself. Customer has paid but fulfillment
                         # failed for some reason. No bueno
                         pass
-                    
-                if state == "InvoiceExpired":
+                elif state == "InvoiceExpired":
                     invoice.order_state = "Expired"
-
+                elif state == "InvoiceInvalid":
+                    invoice.order_state = "Failed"
+                
                 db.commit()
 
                 # Notify the frontend of the state change
@@ -339,6 +454,9 @@ async def btcpay_webhook(request: Request, db: Session = Depends(get_invoice_db)
         print(f"BTCPay webhook HMAC verification failed")
 
 async def dequeue_btcpay_webhook_data(invoice_id: str):
+    if not invoice_id:
+        yield f"event: error\ndata: invoice_id is empty\n\n"
+
     while True:
         try:
             async with btcpay_webhook_lock:
@@ -347,6 +465,8 @@ async def dequeue_btcpay_webhook_data(invoice_id: str):
                     data = await asyncio.wait_for(queue.get(), timeout=0.5)
 
                     yield f"data: {json.dumps(data)}\n\n"
+                else:
+                    yield f"event: error\ndata: invoice_id {invoice_id} not found in btcpay_webhook_queue_map\n\n"
         except asyncio.TimeoutError:
             continue
 
