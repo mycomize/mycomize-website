@@ -113,12 +113,12 @@ function PaymentForm(props) {
   return (
     <>
         <form className="flex flex-col" onSubmit={props.handleSubmit} method="dialog">
-          <p className="text-md mb-5">
+          <p className="text-sm sm:text-md mb-5">
             Provide your email to receive instant access on Web &#x1f310;, ePub
             &#x1f4d6;, and Kindle
             <img className="inline max-w-4 max-h-4" src={kindleLogo} /> formats.
           </p>
-          <label className="font-semibold" htmlFor="email">
+          <label className="font-semibold text-lg" htmlFor="email">
             Email
           </label>
           <input
@@ -132,26 +132,26 @@ function PaymentForm(props) {
             required
           />
           <div className="flex flex-row gap-2 my-4">
-            <img className="circle object-cover w-12 h-12" src={shroomPic} />
+            <img className="circle object-cover w-12 h-12 sm:w-16 sm:h-16" src={shroomPic} />
             <div className="ml-auto my-auto">
-              <p className="text-sm text-right font-semibold">
+              <p className="text-sm sm:text-md text-right font-semibold">
                 Mushroom Cultivation Guide x 1
               </p>
             </div>
           </div>
           <div className="flex flex-col rounded bg-zinc-800 p-4 pt-5 pb-6">
             <h3 className="font-bold text-lg mb-3">Order Summary</h3>
-            <div className="flex flex-row text-xs mb-2">
+            <div className="flex flex-row text-xs sm:text-sm mb-2">
               <p>Subtotal</p>
               <p className="ml-auto font-bold">${props.price.toFixed(2)}</p>
             </div>
             <DividerDark />
-            <div className="flex flex-row text-xs mt-2 mb-2">
+            <div className="flex flex-row text-xs sm:text-sm mt-2 mb-2">
               <p>Tax</p>
               <p className="ml-auto font-bold">${props.tax.toFixed(2)}</p>
             </div>
             <DividerDark />
-            <div className="flex flex-row text-xs mt-2 mb-2">
+            <div className="flex flex-row text-xs sm:text-sm mt-2 mb-2">
               <p className="font-bold">Order Total</p>
               <p className="ml-auto font-bold">${(props.price + props.tax).toFixed(2)}</p>
             </div>

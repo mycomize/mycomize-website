@@ -35,7 +35,7 @@ function LandingPage() {
             >
                 <Header />
                 <Divider />
-                <h1 className="font-bold text-lg my-3">Welcome</h1>
+                <h1 className="font-bold text-lg sm:text-2xl my-3">Welcome</h1>
                 <p className="">
                     <Title /> is a concise yet complete guide for growing
                     mushrooms at home. It distills the vast sea of cultivation

@@ -9,8 +9,8 @@ import mush4 from '/mush4.jpg';
 
 function Header() {
     return (
-    <>
-        <h1 className="text-red-500 text-2xl text-center">shrooms@home</h1>
+    <>  <div className="flex flex-col gap-6 2xl:gap-10">
+        <h1 className="text-red-500 text-3xl sm:text-4xl text-center">shrooms@home</h1>
         <div className="flex gap-4 overflow-clip">
         <div className="flex gap-4 animate-swipe">
             <img className="rounded-md max-w-64 w-48 h-32" src={mush0}/>
@@ -27,7 +27,8 @@ function Header() {
             <img className="rounded-md max-w-64 w-48 h-32" src={mush4}/>
         </div>
         </div>
-        <p className="text-gray-400 text-center text-xs italic">A concise, step-by-step guide to mushroom cultivation</p>
+        <p className="text-gray-400 text-center text-xs sm:text-lg italic">A concise, step-by-step guide to mushroom cultivation</p>
+        </div>
     </>
     );
 }
