@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 
 import Footer from "./Footer";
 import Divider, { DividerDark } from "./Divider";
+import { MycomizeHeader } from "./MycomizeHeader";
+import { MycomizeFooter } from "./MycomizeFooter";
 
 import shroomPic from "/growing-shroom.jpg";
 import kindleLogo from "/icons8-amazon-kindle-50.png";
@@ -90,15 +92,13 @@ export function CheckoutPage(props) {
 
   return (
     <>
-      <div className="flex flex-col gap-4 mx-4 mt-4 text-[#f9fbfd]">
-        <h1 className="font-bold text-xl text-center mt-3">
-          Grow &#x1F344;@&#x1f3e0;{" "}
-        </h1>
-        <Divider />
+      <div className="flex flex-col gap-4 mx-4 mt-4 text-gray-900">
+        <h1 className="font-bold text-lg sm:text-2xl my-3">Checkout</h1>
+        <DividerDark />
         {orderState === "" && <PaymentForm handleSubmit={handleSubmit} email={email} setEmail={setEmail} price={price} tax={tax} handlePayClick={handlePayClick} payOption={payOption}/>}
         {orderExists(orderState) && <OrderExistsBlurb orderState={orderState} setOrderState={setOrderState} modalClose={props.onClose} />}
         {orderState.startsWith("error_") && <ServerErrorBlurb setOrderState={setOrderState} modalClose={props.onClose} />}
-        <Footer />
+        <MycomizeFooter />
       </div>
     </>
   );
@@ -112,13 +112,13 @@ function orderExists(orderState) {
 function PaymentForm(props) {
   return (
     <>
-        <form className="flex flex-col" onSubmit={props.handleSubmit} method="dialog">
-          <p className="text-sm sm:text-md mb-5">
+        <form className="flex flex-col mb-6" onSubmit={props.handleSubmit} method="dialog">
+          <p className="text-lg sm:text-md mb-5">
             Provide your email to receive instant access on Web &#x1f310;, ePub
             &#x1f4d6;, and Kindle
             <img className="inline max-w-4 max-h-4" src={kindleLogo} /> formats.
           </p>
-          <label className="font-semibold text-lg" htmlFor="email">
+          <label className="font-semibold text-xl" htmlFor="email">
             Email
           </label>
           <input
@@ -126,32 +126,32 @@ function PaymentForm(props) {
             name="email"
             type="email"
             placeholder="you@example.com"
-            className="block w-full rounded px-3 py-1.5 mb-5 h-11 text-sm shadow-md bg-slate-200 shadow-slate-900 border border-slate-900 placeholder:text-slate-400 text-slate-800 focus:border-2 focus:border-red-500 focus:outline focus:outline-2 focus:outline-red-500/25"
+            className="block w-full rounded px-3 py-1.5 mb-5 h-11 text-md shadow-sm bg-gray-100 shadow-gray-500 placeholder:text-gray-400 text-gray-900 focus:border-2 focus:border-blue-500 focus:outline focus:outline-2 focus:outline-blue-500/25"
             value={props.email}
             onChange={(e) => props.setEmail(e.target.value)}
             required
           />
-          <div className="flex flex-row gap-2 my-4">
+          <div className="flex flex-row gap-2 mt-4 mb-6">
             <img className="circle object-cover w-12 h-12 sm:w-16 sm:h-16" src={shroomPic} />
             <div className="ml-auto my-auto">
-              <p className="text-sm sm:text-md text-right font-semibold">
-                Mushroom Cultivation Guide x 1
+              <p className="text-lg sm:text-md text-right font-semibold">
+                Fundamentals of Cultivation x 1
               </p>
             </div>
           </div>
-          <div className="flex flex-col rounded bg-zinc-800 p-4 pt-5 pb-6">
+          <div className="flex flex-col rounded bg-gray-100 p-4 pt-5 pb-6 shadow-md">
             <h3 className="font-bold text-lg mb-3">Order Summary</h3>
-            <div className="flex flex-row text-xs sm:text-sm mb-2">
+            <div className="flex flex-row text-md mb-2">
               <p>Subtotal</p>
               <p className="ml-auto font-bold">${props.price.toFixed(2)}</p>
             </div>
             <DividerDark />
-            <div className="flex flex-row text-xs sm:text-sm mt-2 mb-2">
+            <div className="flex flex-row text-md mt-2 mb-2">
               <p>Tax</p>
               <p className="ml-auto font-bold">${props.tax.toFixed(2)}</p>
             </div>
             <DividerDark />
-            <div className="flex flex-row text-xs sm:text-sm mt-2 mb-2">
+            <div className="flex flex-row text-md mt-2 mb-2">
               <p className="font-bold">Order Total</p>
               <p className="ml-auto font-bold">${(props.price + props.tax).toFixed(2)}</p>
             </div>

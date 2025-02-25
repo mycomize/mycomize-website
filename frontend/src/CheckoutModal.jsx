@@ -37,7 +37,7 @@ export const CheckoutModal = ({ isOpen, onClose }) => {
 
   return (
     <dialog
-      className="h-fit max-w-80 sm:max-w-96 rounded-md bg-zinc-700 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(125,109,148,0.3),rgba(255,255,255,0))]"
+      className="h-fit max-w-80 sm:max-w-md rounded-md bg-white"
       id="checkout-modal"
       ref={dialogRef}
       onClose={handleClose}
