@@ -74,7 +74,7 @@ export function CheckoutPage(props) {
       window.location.href = data.checkout_link;
     }
   };
-
+  
   const handlePayClick = (event) => {
     setPayOption(event.target.name);
   };
@@ -113,7 +113,7 @@ function PaymentForm(props) {
   return (
     <>
         <form className="flex flex-col mb-6" onSubmit={props.handleSubmit} method="dialog">
-          <p className="text-lg sm:text-md mb-5">
+          <p className="text-lg mb-5">
             Provide your email to receive instant access on Web &#x1f310;, ePub
             &#x1f4d6;, and Kindle
             <img className="inline max-w-4 max-h-4" src={kindleLogo} /> formats.
@@ -134,7 +134,7 @@ function PaymentForm(props) {
           <div className="flex flex-row gap-2 mt-4 mb-6">
             <img className="circle object-cover w-12 h-12 sm:w-16 sm:h-16" src={shroomPic} />
             <div className="ml-auto my-auto">
-              <p className="text-lg sm:text-md text-right font-semibold">
+              <p className="text-lg text-right font-semibold">
                 Fundamentals of Cultivation x 1
               </p>
             </div>
@@ -174,13 +174,10 @@ function ServerErrorBlurb(props) {
   return (
     <>
       <form method="dialog">
-          <div className="flex flex-col rounded bg-zinc-800 p-4 pt-5 pb-6 gap-y-4">
-            <h3 className="font-bold text-lg mb-3">Order Error &#x274C;</h3>
-            <p>There was an error processing your order. Please try again.
-               <br/><br/>If the issue persists,
-               please reach out directly on <a href="https://x.com/cjamsonx" className="text-red-500 font-semibold">X </a> 
-               or at <a href="mailto:connor@mycomize.com" className="text-red-500 font-semibold">connor@mycomize.com </a>
-               for support.
+          <div className="flex flex-col rounded bg-white text-gray-900 p-4 pt-5 pb-6 gap-y-7">
+            <h3 className="font-bold text-xl mb-3">Order Error &#x274C;</h3>
+            <p className="text-lg">There was an error processing your order. Please try again.
+               <br/><br/>If the issue persists, please reach out for <a href="/contact" className="text-blue-600 font-semibold underline underline-offset-4 decoration-2 decoration-blue-600">support</a>.
             </p>
             <OKButton onClick={handleOKClick} />
           </div>
@@ -199,38 +196,45 @@ function OrderExistsBlurb(props) {
   };
 
   if (props.orderState === "Processing Payment") {
-    header = <h3 className="font-bold text-lg">Order Status: &#x231b; Processing Payment</h3>
-    text = <p>We've received your order and are currently waiting for payment confirmation. You will
-              receive an email with a link to the guide once payment is confirmed.</p>
+    header = <h3 className="font-bold text-xl">Order Status: &#x231b; Processing Payment</h3>
+    text = <p className="text-lg">We've received your order and are currently waiting for payment confirmation. You will
+              receive an email with a link to the guide once payment is confirmed.
+              <br/><br/>If you don't see an email from <strong>mycomize.com</strong>, please check your spam folder.
+           </p>
+            
   } else if (props.orderState === "Settled") {
-    header = <h3 className="font-bold text-lg">Order Status: &#x1f4b0; Settled</h3>
-    text = <p>We've received your order and payment. You will receive an email with a link to the guide soon.
+    header = <h3 className="font-bold text-xl">Order Status: &#x1f4b0; Settled</h3>
+    text = <p className="text-lg">We've received your order and payment. You will receive an email with a link to the guide soon.
           <br/><br/>If you don't see an email from <strong>mycomize.com</strong>, please check your spam folder. 
-          If you still don't see one, please reach out to me on <a href="https://x.com/cjamsonx" className="text-red-500 font-semibold">X </a> 
-          or at <a href='mailto:connor@mycomize.com' className='text-red-500 font-semibold'>connor@mycomize.com</a> for support.
+          If you still don't see one, please reach out for <a className="text-blue-600 font-semibold underline underline-offset-4 decoration-2 decoration-blue-600" href="/contact">support</a>.
           </p>
   } else if (props.orderState === "Fulfilled") {
-    header = <h3 className="font-bold text-lg">Order Status: &#x2705; Fulfilled</h3>
-    text = <p>We've received your order and payment. You will receive an email with a link to the guide soon.
+    header = <h3 className="font-bold text-xl">Order Status: &#x2705; Fulfilled</h3>
+    text = <p className="text-lg">We've received your order and payment. You will receive an email with a link to the guide soon.
           <br/><br/>If you don't see an email from <strong>mycomize.com</strong>, please check your spam folder. 
-          If you still don't see one, please reach out to me on <a href="https://x.com/cjamsonx" className="text-red-500 font-semibold">X </a> 
-          or at <a href='mailto:connor@mycomize.com' className='text-red-500 font-semibold'>connor@mycomize.com</a> for support.
+          If you still don't see one, please reach out for <a className="text-blue-600 font-semibold underline underline-offset-4 decoration-2 decoration-blue-600" href="/contact">support</a>.
           </p>
   } else if (props.orderState === "Expired") {
-    header = <h3 className="font-bold text-lg">Order Status: &#x23F0; Expired</h3>
-    text = <p>Your invoice has expired. Please try again.</p>;
+    header = <h3 className="font-bold text-xl">Order Status: &#x23F0; Expired</h3>
+    text = <p className="text-lg">Your invoice has expired. Please try again.
+              <br/><br/>If the issue persists, please reach out for <a href="/contact" className="text-blue-600 font-semibold underline underline-offset-4 decoration-2 decoration-blue-600">support</a>.
+           </p>
   } else if (props.orderState == "Failed") {
-    header = <h3 className="font-bold text-lg">Order Status: &#x274C; Failed</h3>
-    text = <p>Your payment failed. Please try again.</p>;
+    header = <h3 className="font-bold text-xl">Order Status: &#x274C; Failed</h3>
+    text = <p className="text-lg">Your order has failed to process. Please try again.
+              <br/><br/>If the issue persists, please reach out for <a href="/contact" className="text-blue-600 font-semibold underline underline-offset-4 decoration-2 decoration-blue-600">support</a>.
+           </p>
   } else if (props.orderState == "Canceled") {
-    header = <h3 className="font-bold text-lg">Order Status: &#x1F6AB; Canceled</h3>
-    text = <p>Your payment was canceled. Please try again.</p>;
+    header = <h3 className="font-bold text-xl">Order Status: &#x1F6AB; Canceled</h3>
+    text = <p className="text-lg">Your order was canceled. Please try again.
+              <br/><br/>If the issue persists, please reach out for <a href="/contact" className="text-blue-600 font-semibold underline underline-offset-4 decoration-2 decoration-blue-600">support</a>.
+           </p>
   }
 
   return (
     <>
       <form method="dialog">
-        <div className="flex flex-col rounded bg-zinc-800 p-4 pt-5 pb-6 gap-y-4">
+        <div className="flex flex-col rounded bg-white text-gray-900 p-4 pt-5 pb-6 gap-y-7">
           {header}
           {text}
           <OKButton onClick={handleOKClick} />

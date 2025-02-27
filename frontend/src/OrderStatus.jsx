@@ -9,6 +9,9 @@ import PageNotFound from "./PageNotFound";
 import nostrQrCode from '/nostr-qrcode.png';
 import { TryAgainButton } from './Button';
 
+import { MycomizeHeader } from './MycomizeHeader';
+import { MycomizeFooter } from './MycomizeFooter';
+
 async function getInvoice(invoice_id) {
     try {
         const url = import.meta.env.VITE_BACKEND_URL + `/invoice?invoice_id=${invoice_id}`;
@@ -88,7 +91,13 @@ export function OrderStatus() {
     
     console.log(`orderstate: ${orderState}`);
     
-    return <OrderStatusPage order_type={type} order_state={orderState} order_id={order_id} />;
+    return (
+        <div className="min-h-screen flex flex-col">
+            <MycomizeHeader />
+            <OrderStatusPage order_type={type} order_state={orderState} order_id={order_id} />;
+            <MycomizeFooter />
+        </div>
+    );
 }
 
 function OrderStatusPage({ order_type, order_state, order_id }) {
@@ -104,34 +113,33 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
     }
 
     const handleTryAgain = () => {
-        navigate('/');
+        navigate('/guides');
     }
     
     if (order_state === 'Fulfilled') {
-        status = <h3>Order Status: <strong>Fulfilled &#x2705;</strong></h3>;
+        status = <h3 className="font-semibold">Order Status: <strong>Fulfilled &#x2705;</strong></h3>;
     } else if (order_state === 'Settled') {
-        status = <h3>Order Status: <strong>Settled &#x1f4b0;</strong></h3>;
+        status = <h3 className="font-semibold">Order Status: <strong>Settled &#x1f4b0;</strong></h3>;
     } else if (order_state === 'Processing Payment') {
-        status = <h3>Order Status: <strong>Processing Payment &#x231b;</strong></h3>;
+        status = <h3 className="font-semibold">Order Status: <strong>Processing Payment &#x231b;</strong></h3>;
     } else if (order_state === "Expired") {
-        status = <h3>Order Status: <strong>Invoice Expired &#x23f0;</strong></h3>;
+        status = <h3 className="font-semibold">Order Status: <strong>Invoice Expired &#x23f0;</strong></h3>;
     }
     
     const order = (
         <>
-            <div className="text-sm">
+            <div className="text-xl mt-6">
                 {status}
-                <h3>Order ID: <strong>{order_id}</strong></h3>
-                <p className="mt-2">Please keep this ID for your records.</p>
+                <h3 className="font-semibold">Order ID: <strong>{order_id}</strong></h3>
+                <p className="mt-2 text-lg">Please keep this ID for your records.</p>
             </div>
         </>
     );
 
     const support = (
         <p className="mt-3">If you don't see an email from <strong>mycomize.com</strong>, 
-            please check your spam folder. If you still don't see one, please reach out to me on
-            <a href="https://x.com/cjamsonx" className="text-red-500 font-semibold"> X</a> or email me at
-            <a href="mailto:connor@mycomize.com" className="text-red-500 font-semibold"> connor@mycomize.com</a>.
+            please check your spam folder. If you still don't see one, please reach out 
+            for <a href="/contact" className="text-blue-600 font-semibold underline underline-offset-4 decoration-2 decoration-blue-600">support</a>.
         </p>
     );
 
@@ -158,7 +166,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
 
         text = (
             <>
-                <div className="text-sm flex flex-col gap-3 mt-4">
+                <div className="flex flex-col gap-3 mt-4">
                     {info}
                     {support}
                 </div>
@@ -177,7 +185,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
 
         text = (
             <>
-                <div className="text-sm flex flex-col gap-3 mt-4">
+                <div className="text-lg flex flex-col gap-3 mt-4">
                     <p>{info}</p>
                     {support}
                 </div>
@@ -188,49 +196,42 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
     
     if (order_state !== "Expired") {
         return (
-            <div className="flex flex-col mx-auto px-4 max-w-prose gap-2 h-screen text-slate-200 text-sm m-6">
-                <div className="flex flex-col gap-5">
-                    <Header />
-                </div>
-                <div className="my-1"></div>
-                <Divider />
-                <h1 className="font-bold text-lg my-3">Thank You</h1>
+            <div className="bg-white px-6 py-10 sm:py-20 lg:px-8 flex-grow">
+              <div className="mx-auto max-w-3xl text-base/7 text-gray-700">
+                <h1 className="mt-2 text-pretty text-4xl font-raleway font-semibold tracking-tight text-gray-900 sm:text-5xl">
+                  Thank You
+                </h1>
                 {order}
                 {text}
-                <Footer />
+              </div>
             </div>
         );
     } else {
         if (type === "BTC") {
             text = (
                 <>
-                    <div className="text-sm flex flex-col gap-3 mt-2">
+                    <div className="flex flex-col gap-3 mt-2">
                         <p>
                             Your BTC invoice has expired. Please try again.
                         </p>
-                        <p> If the issue persists, please reach out
-                            on <a href="https://x.com/cjamsonx" className="text-red-500 font-semibold">X</a> or email me at
-                             <a href="mailto:connor@mycomize.com" className="text-red-500 font-semibold"> connor@mycomize.com</a>.
-                             You can also reach me on nostr:
+                        <p> If the issue persists, please reach out for <a href="/contact" className="text-blue-600 font-semibold underline underline-offset-4 decoration-2 decoration-blue-600">support</a>.
+                            You can also reach me on nostr:
                         </p>
                         <img src={nostrQrCode} alt="nostr qrcode" className="justify-center w-32 h-32 mx-auto mt-4" />
                     </div>
                 </>
-                
             );
         }
         
         return (
-            <div className="flex flex-col mx-auto px-4 max-w-prose gap-2 h-screen text-slate-200 text-sm m-6">
-                <div className="flex flex-col gap-5">
-                    <Header />
-                </div>
-                <div className="my-1"></div>
-                <Divider />
-                <h1 className="font-bold text-lg my-3">Invoice Expired &#x23f0; </h1>
+            <div className="bg-white px-6 py-10 sm:py-20 lg:px-8 flex-grow text-md sm:text-lg">
+              <div className="mx-auto max-w-3xl text-base/7 text-gray-700">
+                <h1 className="mt-2 text-pretty text-4xl font-raleway font-semibold tracking-tight text-gray-900 sm:text-5xl">
+                  Invoice Expired &#x23f0;
+                </h1>
                 {text}
                 <TryAgainButton onClick={handleTryAgain} /> 
-                <Footer />
+              </div>
             </div>
         );
     }
