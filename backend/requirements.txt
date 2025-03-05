@@ -1,6 +1,8 @@
 email_validator
 fastapi[standard]
-pydantic
-stripe
-sqlalchemy
 httpx
+mailersend
+pydantic
+sqlalchemy
+stripe
+boto3
