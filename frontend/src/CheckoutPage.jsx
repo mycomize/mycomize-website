@@ -10,7 +10,7 @@ import kindleLogo from "/icons8-amazon-kindle-50.png";
 
 import { BTCPayButton, StripePayButton, OKButton } from "./Button";
 
-async function checkout(email, payOption) {
+async function checkout(email, payOption, guide) {
   try {
     const url = import.meta.env.VITE_BACKEND_URL + "/checkout";
     const response = await fetch(url, {
@@ -18,50 +18,39 @@ async function checkout(email, payOption) {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ email: email, type: payOption }),
+      body: JSON.stringify({ email: email, type: payOption, id: guide.id }),
     });
 
     if (response.ok) {
-      const data = await response.json();
-      return data;
+      return await response.json();
     } else {
       console.error("Failed to checkout", response.status, response.statusText);
     }
   } catch (error) {
     console.error("Error during checkout:", error);
   }
-}
-
-async function getPrice() {
-  try {
-    const url = import.meta.env.VITE_BACKEND_URL + "/price";
-    const response = await fetch(url);
-
-    if (response.ok) {
-      const data = await response.json();
-      return data;
-    } else {
-      console.error(
-        "Failed to get shroomsathome price",
-        response.status,
-        response.statusText
-      );
-    }
-  } catch (error) {
-    console.error("Error during get price:", error);
-  }
+  
+  return null;
 }
 
 export function CheckoutPage(props) {
   const [email, setEmail] = useState("");
   const [payOption, setPayOption] = useState("");
   const [orderState, setOrderState] = useState("");
-  const [price, setPrice] = useState(0.0);
-  const [tax, setTax] = useState(0.0);
+
+  const defaultGuide = {
+    id: "none",
+    title: "",
+    price: 0.00,
+    tax: 0.00,
+    image: "",
+  };
+
+  const guide = props.guide || defaultGuide;
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    const data = await checkout(email, payOption);
+    const data = await checkout(email, payOption, guide);
     
     if (data.hasOwnProperty("order_state")) {
       console.log(data.order_state);
@@ -79,23 +68,12 @@ export function CheckoutPage(props) {
     setPayOption(event.target.name);
   };
 
-  useEffect(() => {
-    async function fetchPrice() {
-      const data = await getPrice();
-
-      setPrice(data.price);
-      setTax(data.tax);
-    }
-
-    fetchPrice();
-  }, []);
-
   return (
     <>
       <div className="flex flex-col gap-4 mx-4 mt-4 text-gray-900">
         <h1 className="font-bold text-lg sm:text-2xl my-3">Checkout</h1>
         <DividerDark />
-        {orderState === "" && <PaymentForm handleSubmit={handleSubmit} email={email} setEmail={setEmail} price={price} tax={tax} handlePayClick={handlePayClick} payOption={payOption}/>}
+        {orderState === "" && <PaymentForm handleSubmit={handleSubmit} email={email} setEmail={setEmail} guide={guide} handlePayClick={handlePayClick} payOption={payOption} />}
         {orderExists(orderState) && <OrderExistsBlurb orderState={orderState} setOrderState={setOrderState} modalClose={props.onClose} />}
         {orderState.startsWith("error_") && <ServerErrorBlurb setOrderState={setOrderState} modalClose={props.onClose} />}
         <MycomizeFooter />
@@ -109,14 +87,12 @@ function orderExists(orderState) {
          orderState === "Expired" || orderState === "Canceled" || orderState === "Failed";
 }
 
-function PaymentForm(props) {
+function PaymentForm({ handleSubmit, email, setEmail, guide, handlePayClick, payOption }) {
   return (
     <>
-        <form className="flex flex-col mb-6" onSubmit={props.handleSubmit} method="dialog">
+        <form className="flex flex-col mb-6" onSubmit={handleSubmit} method="dialog">
           <p className="text-lg mb-5">
-            Provide your email to receive instant access on Web &#x1f310;, ePub
-            &#x1f4d6;, and Kindle
-            <img className="inline max-w-4 max-h-4" src={kindleLogo} /> formats.
+            Provide your email to receive access to PDF and ePub versions of the guide.
           </p>
           <label className="font-semibold text-xl" htmlFor="email">
             Email
@@ -127,15 +103,15 @@ function PaymentForm(props) {
             type="email"
             placeholder="you@example.com"
             className="block w-full rounded px-3 py-1.5 mb-5 h-11 text-md shadow-sm bg-gray-100 shadow-gray-500 placeholder:text-gray-400 text-gray-900 focus:border-2 focus:border-blue-500 focus:outline focus:outline-2 focus:outline-blue-500/25"
-            value={props.email}
-            onChange={(e) => props.setEmail(e.target.value)}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
             required
           />
           <div className="flex flex-row gap-2 mt-4 mb-6">
             <img className="circle object-cover w-12 h-12 sm:w-16 sm:h-16" src={shroomPic} />
             <div className="ml-auto my-auto">
-              <p className="text-lg text-right font-semibold">
-                Fundamentals of Cultivation x 1
+              <p className="text-md text-right font-semibold">
+                {guide.title} x 1
               </p>
             </div>
           </div>
@@ -143,21 +119,21 @@ function PaymentForm(props) {
             <h3 className="font-bold text-lg mb-3">Order Summary</h3>
             <div className="flex flex-row text-md mb-2">
               <p>Subtotal</p>
-              <p className="ml-auto font-bold">${props.price.toFixed(2)}</p>
+              <p className="ml-auto font-bold">${guide.price.toFixed(2)}</p>
             </div>
             <DividerDark />
             <div className="flex flex-row text-md mt-2 mb-2">
               <p>Tax</p>
-              <p className="ml-auto font-bold">${props.tax.toFixed(2)}</p>
+              <p className="ml-auto font-bold">${guide.tax.toFixed(2)}</p>
             </div>
             <DividerDark />
             <div className="flex flex-row text-md mt-2 mb-2">
               <p className="font-bold">Order Total</p>
-              <p className="ml-auto font-bold">${(props.price + props.tax).toFixed(2)}</p>
+              <p className="ml-auto font-bold">${(guide.price + guide.tax).toFixed(2)}</p>
             </div>
             <div className="flex flex-col text-sm gap-y-5 mt-2">
-              <StripePayButton onClick={props.handlePayClick} payOption={props.payOption} />
-              <BTCPayButton onClick={props.handlePayClick} payOption={props.payOption} />
+              <StripePayButton onClick={handlePayClick} payOption={payOption} />
+              <BTCPayButton onClick={handlePayClick} payOption={payOption} />
             </div>
           </div>
         </form>

@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { CheckoutPage } from "./CheckoutPage";
 
-export const CheckoutModal = ({ isOpen, onClose }) => {
+export const CheckoutModal = ({ isOpen, onClose, guide }) => {
   const dialogRef = useRef(null);
 
   useEffect(() => {
@@ -43,7 +43,7 @@ export const CheckoutModal = ({ isOpen, onClose }) => {
       onClose={handleClose}
       onCancel={handleCancel}
     >
-      <CheckoutPage onClose={handleClose} />
+      <CheckoutPage onClose={handleClose} guide={guide} />
     </dialog>
   );
 };
