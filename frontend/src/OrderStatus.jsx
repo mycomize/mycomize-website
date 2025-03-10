@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import PageNotFound from "./PageNotFound";
 import nostrQrCode from '/nostr-qrcode.png';
+import { Page404 } from "./Page404";
 import { TryAgainButton } from './Button';
 import { MycomizeHeader } from './MycomizeHeader';
 import { MycomizeFooter } from './MycomizeFooter';
@@ -89,7 +89,7 @@ export function OrderStatus() {
     return (
         <div className="min-h-screen flex flex-col">
             <MycomizeHeader />
-            <OrderStatusPage order_type={type} order_state={orderState} order_id={order_id} />;
+            <OrderStatusPage order_type={type} order_state={orderState} order_id={order_id} />
             <MycomizeFooter />
         </div>
     );
@@ -104,7 +104,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
     console.log(`orderstate (in OrderStatusPage): ${order_state}`);
     
     if (!type || !order_id) {
-        return <PageNotFound />;
+        return <Page404 />;
     }
 
     const handleTryAgain = () => {
