@@ -1,14 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import Header from "./Header";
-import Footer from "./Footer";
-import Divider from "./Divider";
 import PageNotFound from "./PageNotFound";
-
 import nostrQrCode from '/nostr-qrcode.png';
 import { TryAgainButton } from './Button';
-
 import { MycomizeHeader } from './MycomizeHeader';
 import { MycomizeFooter } from './MycomizeFooter';
 

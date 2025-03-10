@@ -4,11 +4,11 @@ import React from 'react';
 import { MycomizeHeader } from './MycomizeHeader';
 import { MycomizeFooter } from './MycomizeFooter';
 
-import mush0 from '/mush0.jpg';
-import mush1 from '/mush1.jpg';
-import mush2 from '/mush2.jpg';
-import mush3 from '/mush3.jpg';
-import mush4 from '/mush4.jpg';
+import mush0 from '/mush0.webp';
+import mush1 from '/mush1.webp';
+import mush2 from '/mush2.webp';
+import mush3 from '/mush3.webp';
+import mush4 from '/mush4.webp';
 
 export function Home() {
   return (

@@ -1,14 +1,8 @@
-import { useEffect, useState } from "react";
-
-import Footer from "./Footer";
-import Divider, { DividerDark } from "./Divider";
-import { MycomizeHeader } from "./MycomizeHeader";
+import { useState } from "react";
+import { DividerDark } from "./Divider";
 import { MycomizeFooter } from "./MycomizeFooter";
-
-import shroomPic from "/growing-shroom.jpg";
-import kindleLogo from "/icons8-amazon-kindle-50.png";
-
 import { BTCPayButton, StripePayButton, OKButton } from "./Button";
+import shroomPic from "/growing-shroom.webp";
 
 async function checkout(email, payOption, guide) {
   try {
