@@ -18,12 +18,6 @@
 }
 
 @font-face {
-    font-family: Jersey;
-    src: url('/fonts/Jersey15-Regular.ttf');
-    font-display: swap;
-}
-
-@font-face {
     font-family: Raleway;
     src: url('/fonts/Raleway-Regular.ttf');
     font-display: swap;

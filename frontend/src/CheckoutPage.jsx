@@ -29,7 +29,6 @@ async function checkout(email, payOption, guide) {
 
 export function CheckoutPage(props) {
   const [email, setEmail] = useState("");
-  const [payOption, setPayOption] = useState("");
   const [orderState, setOrderState] = useState("");
 
   const defaultGuide = {
@@ -42,32 +41,34 @@ export function CheckoutPage(props) {
 
   const guide = props.guide || defaultGuide;
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleSubmit = async (payOption) => {
     const data = await checkout(email, payOption, guide);
     
     if (data.hasOwnProperty("order_state")) {
-      console.log(data.order_state);
       setOrderState(data.order_state);
     } else if (data.hasOwnProperty("error")) {
-      console.log(data.error);
       setOrderState(data.error);
     } else if (data.hasOwnProperty("checkout_link")) {
-      console.log(data.checkout_link);
       window.location.href = data.checkout_link;
     }
   };
   
-  const handlePayClick = (event) => {
-    setPayOption(event.target.name);
-  };
-
+  const handleStripeSubmit = async (event) => {
+    event.preventDefault()
+    handleSubmit("stripe");
+  }
+  
+  const handleBTCSubmit = async (event) => {
+    event.preventDefault()
+    handleSubmit("btc");
+  }
+  
   return (
     <>
       <div className="flex flex-col gap-4 mx-4 mt-4 text-gray-900">
         <h1 className="font-bold text-lg sm:text-2xl my-3">Checkout</h1>
         <DividerDark />
-        {orderState === "" && <PaymentForm handleSubmit={handleSubmit} email={email} setEmail={setEmail} guide={guide} handlePayClick={handlePayClick} payOption={payOption} />}
+        {orderState === "" && <PaymentForm email={email} setEmail={setEmail} guide={guide} handleStripeSubmit={handleStripeSubmit} handleBTCSubmit={handleBTCSubmit} />}
         {orderExists(orderState) && <OrderExistsBlurb orderState={orderState} setOrderState={setOrderState} modalClose={props.onClose} />}
         {orderState.startsWith("error_") && <ServerErrorBlurb setOrderState={setOrderState} modalClose={props.onClose} />}
         <MycomizeFooter />
@@ -81,10 +82,10 @@ function orderExists(orderState) {
          orderState === "Expired" || orderState === "Canceled" || orderState === "Failed";
 }
 
-function PaymentForm({ handleSubmit, email, setEmail, guide, handlePayClick, payOption }) {
+function PaymentForm({ email, setEmail, guide, handleStripeSubmit, handleBTCSubmit }) {
   return (
     <>
-        <form className="flex flex-col mb-6" onSubmit={handleSubmit} method="dialog">
+        <form className="flex flex-col mb-6" id="payment-form" method="dialog">
           <p className="text-lg mb-5">
             Provide your email to receive access to PDF and ePub versions of the guide.
           </p>
@@ -126,8 +127,8 @@ function PaymentForm({ handleSubmit, email, setEmail, guide, handlePayClick, pay
               <p className="ml-auto font-bold">${(guide.price + guide.tax).toFixed(2)}</p>
             </div>
             <div className="flex flex-col text-sm gap-y-5 mt-2">
-              <StripePayButton onClick={handlePayClick} payOption={payOption} />
-              <BTCPayButton onClick={handlePayClick} payOption={payOption} />
+              <StripePayButton onClick={handleStripeSubmit} />
+              <BTCPayButton onClick={handleBTCSubmit} />
             </div>
           </div>
         </form>

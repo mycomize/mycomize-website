@@ -7,7 +7,6 @@ export function StripePayButton(props) {
       className="w-full inline-flex items-center justify-center gap-x-2 rounded-lg text-white sm:text-lg font-semibold px-2 py-1 self-center bg-blue-600 shadow-md shadow-gray-600 hover:bg-gray-800" 
       onClick={props.onClick}
       type="submit"
-      name="stripe"
     >
       <img className="max-h-8 max-w-8" src={creditCardLogo} />
       Pay with card
@@ -21,7 +20,6 @@ export function BTCPayButton(props) {
       className="w-full inline-flex items-center justify-center gap-x-2 rounded-lg text-white sm:text-lg font-semibold px-2 py-1 self-center bg-[#F7931A] shadow-md shadow-gray-600 hover:bg-gray-800"
       onClick={props.onClick}
       type="submit"
-      name="btc"
     >
       <img className="max-h-8 max-w-8 ml-4" src={btcLogo} />
       Pay with bitcoin
