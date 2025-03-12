@@ -1,3 +1,5 @@
 backend/__pycache__
 backend/invoices.db
 backend/config.json
+backend/alarm-config.json
+backend/mycomize-alarm.log
