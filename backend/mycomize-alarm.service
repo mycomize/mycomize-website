@@ -1,0 +1,14 @@
+[Unit]
+Description=Telegram Alarm Service for Mycomize
+After=network.target
+
+[Service]
+Type=simple
+User=MYCOMIZE_USR
+WorkingDirectory=ALARM_WORKDIR
+ExecStart=/usr/bin/python3 ALARM_PATH
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

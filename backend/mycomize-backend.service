@@ -1,0 +1,16 @@
+[Unit]
+Description=Mycomize Backend Service
+After=network.target
+StartLimitIntervalSec=1
+
+[Service]
+User=MYCOMIZE_USR
+Group=MYCOMIZE_GRP
+WorkingDirectory=MYCOMIZE_WORKING_DIR
+Environment="PATH=MYCOMIZE_VENV_BIN_PATH"
+ExecStart=MYCOMIZE_VENV_BIN_FASTAPI run --port 8000
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
