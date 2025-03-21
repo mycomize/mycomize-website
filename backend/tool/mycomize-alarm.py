@@ -15,7 +15,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Configuration
-CONFIG_FILE = 'alarm-config.json'
+CONFIG_FILE = '../config/alarm-config.json'
 
 def load_config():
     """Load configuration from alarm-config.json file."""
@@ -39,7 +39,7 @@ def send_telegram_message(bot_token, chat_id, message):
         "text": message,
         "parse_mode": "Markdown"
     }
-    
+
     try:
         response = requests.post(url, data=data)
         response.raise_for_status()
@@ -80,35 +80,35 @@ def init_systemd_checks(bot_token, chat_id, systemd_services_list):
             f"Current status: `{status}`\n"
             f"Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`"
         )
-        
+
     return systemd_state
 
 def check_systemd_services(bot_token, chat_id, systemd_state):
-    for service, was_active in systemd_state.items(): 
+    for service, was_active in systemd_state.items():
         is_active = systemd_service_is_active(service)
-        
+
         if was_active and not is_active:
             logger.warning(f"Service {service} has stopped!")
             send_telegram_message(
-                bot_token, 
-                chat_id, 
+                bot_token,
+                chat_id,
                 f"🚨 *ALERT: Service Down*\n"
                 f"The `{service}` service has *stopped*.\n"
                 f"Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`"
             )
-            
+
         if not was_active and is_active:
             logger.info(f"Service {service} has started!")
             send_telegram_message(
-                bot_token, 
-                chat_id, 
+                bot_token,
+                chat_id,
                 f"✅ *Service Recovered*\n"
                 f"The `{service}` service is now *running*.\n"
                 f"Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`"
             )
-            
+
         systemd_state[service] = is_active
-        
+
     return systemd_state
 
 def check_backend_log_with_pattern(bot_token, chat_id, backend_service, level, pattern):
@@ -116,7 +116,7 @@ def check_backend_log_with_pattern(bot_token, chat_id, backend_service, level, p
         # Calculate timestamp for ~ 2 minutes ago
         two_min_ago = datetime.now().timestamp() - 125
         since_time = datetime.fromtimestamp(two_min_ago).strftime('%Y-%m-%d %H:%M:%S')
-        
+
         # Run journalctl command with --since argument
         result = subprocess.run(
             [
@@ -128,13 +128,13 @@ def check_backend_log_with_pattern(bot_token, chat_id, backend_service, level, p
             text=True,
             check=False
         )
-        
+
         if result.returncode != 0:
             logger.error(f"Error checking {backend_service} {level}: {result.stderr}")
             return
-        
+
         output = result.stdout.strip()
-        
+
         if output != '-- No entries --':
             if level == 'info':
                 send_telegram_message(
@@ -144,7 +144,7 @@ def check_backend_log_with_pattern(bot_token, chat_id, backend_service, level, p
                     f"```\n{output}\n```\n"
                     f"Time: `{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}`"
                 )
-            else: 
+            else:
                 send_telegram_message(
                     bot_token,
                     chat_id,
@@ -162,18 +162,18 @@ def main():
     chat_id = config.get('telegram_chat_id')
     check_interval = config.get('check_interval', 120)  # seconds
     systemd_services = config.get('systemd_services', [])
-    
+
     if not bot_token or not chat_id:
         logger.error("Telegram bot token or chat ID not configured.")
         exit(1)
-    
+
     systemd_state = None
     if systemd_services:
         logger.info(f"Initializing systemd service monitoring for: {', '.join(systemd_services)}")
         systemd_state = init_systemd_checks(bot_token, chat_id, systemd_services)
-    
+
     logger.info(f"Monitoring started with check interval of {check_interval} seconds")
-    
+
     while True:
         # Check systemd services if configured
         if systemd_state is not None:
