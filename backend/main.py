@@ -8,9 +8,10 @@ import logging
 import string
 import stripe
 import secrets
+
 from botocore.exceptions import ClientError
 
-from database import Invoice, get_invoice_db, dump_invoice_db
+from database import Invoice, get_invoice_db, RateLimit, get_rate_limit_db
 from email_validator import validate_email, EmailNotValidError
 
 from fastapi import FastAPI, Depends, HTTPException, Request, Header
@@ -24,11 +25,23 @@ from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 
+class Location:
+    def __init__(self, valid, city, state, postal_code, country):
+        self.valid = valid
+        self.city = city
+        self.state = state
+        self.postal_code = postal_code
+        self.country = country
+        
+    def in_colorado(self):
+        return self.state == 'CO' and self.country == 'US'
+
 btcpay_webhook_queue_map = {}
 stripe_webhook_queue_map = {}
 btcpay_webhook_lock = asyncio.Lock()
 stripe_webhook_lock = asyncio.Lock()
 invoice_lock = asyncio.Lock()
+rate_limit_lock = asyncio.Lock()
 
 product_list = [
     {
@@ -37,7 +50,6 @@ product_list = [
         "description": "A concise, step-by-step guide to mushroom cultivation",
         "title": "Fundamentals of Mushroom Cultivation",
         "price": 0.00,
-        "tax": 0.00,
         "stripe_price_id": "",
         "file_list": [],
         "image": "/mush1.webp"
@@ -55,7 +67,6 @@ def init_product_list(config):
         if p['id'] == 'fundamentals':
             p['price'] = config['fundamentals_price']
             p['stripe_price_id'] = config['fundamentals_stripe_price_id']
-            p['tax'] = config['fundamentals_price'] * config['tax_rate']
             p['file_list'] = config['fundamentals_s3_files']
 
 def find_product(product_id):
@@ -73,7 +84,7 @@ def find_product(product_id):
             return product
     return None
 
-with open("config.json", 'r') as f:
+with open("config/config.json", 'r') as f:
     config = json.load(f)
     
     # BTCPay configs
@@ -82,6 +93,17 @@ with open("config.json", 'r') as f:
     btcpay_api_key = config['btcpay_api_key']
     btcpay_webhook_secret = config['btcpay_webhook_secret']
 
+    # Rate limit configs
+    checkout_rate_limit = config['checkout_rate_limit']
+
+    # Colorado GIS configs
+    colorado_gis_url = config['colorado_gis_url']
+    colorado_gis_key = config['colorado_gis_key']
+    
+    # Google maps configs
+    google_maps_api_key = config['google_maps_api_key']
+    google_maps_addr_validation_url = config['google_maps_addr_validation_url']
+    
     # Stripe configs
     stripe.api_key = config['stripe_secret_key']
     stripe_webhook_secret = config['stripe_webhook_secret']
@@ -96,7 +118,7 @@ with open("config.json", 'r') as f:
     aws_region = config['aws_region']
     s3_bucket_name = config['s3_bucket_name']
     s3_url_expiration = config.get('s3_url_expiration', 172800)  # Default: 2 days in seconds
-
+    
     frontend_url = config['frontend_url']
     init_product_list(config)
 
@@ -363,7 +385,119 @@ def send_email(email, order_id, presigned_url_list, product, type):
         log.error(f"failed to send fulfillment email to {email}, pdf_link={pdf_link}, epub_link={epub_link}, type={type}, (response={response})")
         return False
 
-async def create_btcpay_invoice(customer_email, order_id, product):
+async def validate_location(city, state, postal_code, country):
+    url = google_maps_addr_validation_url + f"?key={google_maps_api_key}"
+
+    headers = {
+        "Content-Type": "application/json",
+    }
+
+    data = {
+        "address": {
+            "regionCode": country,
+            "addressLines": [f"{city}, {state} {postal_code}"]
+        }
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, json=data)
+        
+    if response.status_code == 200:
+        data = response.json()
+        
+        valid = True 
+        component_list = data['result']['address']['addressComponents']
+
+        for component in component_list:
+            if component['confirmationLevel'] != 'CONFIRMED':
+                valid = False
+                break
+        
+        if valid and len(component_list) != 4:
+            valid = False
+            
+        if valid:
+            city = data['result']['address']['postalAddress']['locality']
+            state = data['result']['address']['postalAddress']['administrativeArea']
+            postal_code = data['result']['address']['postalAddress']['postalCode']
+            country = data['result']['address']['postalAddress']['regionCode']
+
+            log.info(f"validated address: city={city}, state={state}, postal_code={postal_code}, country={country}")
+        else:
+            log.warning(f"failed to validateAddress: city={city}, state={state}, postal_code={postal_code}, country={country} (status_code={response.status_code})") 
+                
+        return Location(valid, city, state, postal_code, country)
+    else:
+        log.warning(f"failed to validateAddress: city={city}, state={state}, postal_code={postal_code}, country={country} (status_code={response.status_code})") 
+
+    return Location(False, city, state, postal_code, country)
+    
+async def compute_sales_tax(location):
+    """
+    Compute the sales tax for a given location.
+    
+    Args:
+        location (Location): A valid location
+        
+    Returns:
+        float: The computed sales tax rate
+    """
+    
+    if not location.in_colorado():
+        return 0.00
+    
+    city = location.city
+    state = location.state
+    zipcode = location.postal_code
+
+    url = colorado_gis_url
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": f"Bearer {colorado_gis_key}"
+    }
+
+    data = {
+        "address": {
+            f"{city}, {state} {zipcode}"
+        }
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(url, headers=headers, json=data)
+        
+    if response.status_code == 200:
+        data = response.json()
+        sales_tax = data['totalSalesTax']
+        return sales_tax
+    else:
+        log.error(f"failed to compute colorado sales tax: city={city}, state={state}, zipcode={zipcode}, (status_code={response.status_code})") 
+    return -1.00
+    
+async def rate_limit_exceeded(email, product_id, limit, rate_limit_db):
+    count = 0
+
+    async with rate_limit_lock:
+        rate_limit = rate_limit_db.query(RateLimit).filter(and_(RateLimit.email == email, RateLimit.product_id == product_id)).first()
+
+        if rate_limit is None:
+            rate_limit = RateLimit(email=email, product_id=product_id, request_count=0)
+            rate_limit_db.add(rate_limit)
+            rate_limit_db.commit()
+            count = 1
+        else:
+            if rate_limit.request_count < limit:
+                rate_limit.request_count += 1
+                rate_limit_db.commit()
+
+            count = rate_limit.request_count
+
+    log.info(f"checkout rate limit: email={email}, product_id={product_id}, count={count}")
+
+    return count > limit
+
+async def create_btcpay_invoice(customer_email, order_id, product, sales_tax):
     """
     Create a new invoice in BTCPay Server.
     
@@ -371,6 +505,7 @@ async def create_btcpay_invoice(customer_email, order_id, product):
         customer_email (str): Customer's email address
         order_id (str): Unique order identifier
         product (dict): Product information including price and title
+        sales_tax (float): Sales tax as a percentage
         
     Returns:
         dict: The created invoice data if successful, or an error dictionary
@@ -382,15 +517,17 @@ async def create_btcpay_invoice(customer_email, order_id, product):
         "Content-Type": "application/json"
     }
 
+    total_tax = sales_tax * product['price']
+
     data = {
         "metadata": {
             "buyerEmail": customer_email,
             "itemDesc": product['title'],
             "orderId": order_id,
-            "taxIncluded": product['tax'],
+            "taxIncluded": total_tax,
             "posData": {
                "sub_total": product['price'],
-               "total": product['price'] + product['tax']
+               "total": product['price'] + total_tax
             }
         },
         "checkout": {
@@ -401,7 +538,7 @@ async def create_btcpay_invoice(customer_email, order_id, product):
             "redirectURL": frontend_url + "/order-status?type=btc&order_id=" + order_id + "&invoice_id={InvoiceId}",
             "redirectAutomatically": True,
         },
-        "amount": str(round(product['price'] + product['tax'], 2)),
+        "amount": str(round(product['price'] + total_tax, 2)),
         "currency": "USD"
     }
     
@@ -439,21 +576,21 @@ def verify_btcpay_webhook(body_bytes, btcpay_sig_str, webhook_secret_str):
     computed_hash = "sha256=" + computed_hash
     return hmac.compare_digest(computed_hash, btcpay_sig_str)
 
-async def checkout_btc(email, order_id, db, product):
+async def checkout_btc(email, order_id, invoice_db, product, city, state, zipcode, country):
     """
     Process a Bitcoin checkout request.
     
     Args:
         email (str): Customer's email address
         order_id (str): Unique order identifier
-        db (Session): Database session
+        invoice_db (Session): Database session
         product (dict): Product information
         
     Returns:
         dict: Response containing checkout link or error information
     """
     try:
-        invoice = db.query(Invoice).filter(Invoice.email == email).first()
+        invoice = invoice_db.query(Invoice).filter(Invoice.email == email).first()
         
         if invoice:
             async with invoice_lock:
@@ -464,13 +601,21 @@ async def checkout_btc(email, order_id, db, product):
                         return {"checkout_link": invoice.checkout_link} 
                     else: # Failed or Expired or Canceled
                         log.warning(f"invoice (btcpay): invoice_id={invoice.btcpay_invoice_id} state={invoice.btcpay_invoice_state} email={email} (failed/expired) deleting from DB")
-                        db.delete(invoice)
-                        db.commit()
+                        invoice_db.delete(invoice)
+                        invoice_db.commit()
                 else:
                     log.error(f"invoice (btcpay): email={email} already has a stripe invoice. Only one payment type supported")
                     return {"error": "error_only_one_payment_type_supported"}
     
-        invoice = await create_btcpay_invoice(email, order_id, product)
+        location = await validate_location(city, state, zipcode, country)
+        if not location.valid: 
+            return {"error": "error_invalid_location"}
+
+        sales_tax = await compute_sales_tax(location)
+        if sales_tax < 0.00:
+            return {"error": "error_compute_sales_tax_failed"}
+
+        invoice = await create_btcpay_invoice(email, order_id, product, sales_tax)
         if "error" in invoice:
             return invoice
 
@@ -479,17 +624,21 @@ async def checkout_btc(email, order_id, db, product):
     
         log.info(f"invoice (btcpay): order_id={order_id} invoice_id={invoice_id} state={invoice_state} email={email} (new)")
     
-        db_entry = Invoice(email=email,
-                           payment_type='btc',
-                           order_id=order_id,
-                           order_state="Processing Payment",
-                           checkout_link=invoice["checkoutLink"],
-                           product_id=product['id'],
-                           btcpay_invoice_id=invoice_id,
-                           btcpay_invoice_state=invoice_state)
+        invoice_db_entry = Invoice(email=email,
+                                   payment_type='btc',
+                                   order_id=order_id,
+                                   order_state="Processing Payment",
+                                   checkout_link=invoice["checkoutLink"],
+                                   product_id=product['id'],
+                                   btcpay_invoice_id=invoice_id,
+                                   btcpay_invoice_state=invoice_state,
+                                   btcpay_city=location.city,
+                                   btcpay_state=location.state,
+                                   btcpay_postal_code=location.postal_code,
+                                   btcpay_country=location.country)
     
-        db.add(db_entry)
-        db.commit()
+        invoice_db.add(invoice_db_entry)
+        invoice_db.commit()
     
         async with btcpay_webhook_lock:
             if invoice_id not in btcpay_webhook_queue_map:
@@ -497,43 +646,40 @@ async def checkout_btc(email, order_id, db, product):
     
         return { "checkout_link": invoice["checkoutLink"] }
     except SQLAlchemyError as e:
-        log.error(f"error_db_btc: {e}, email={email}")
-        return {"error": f"error_db_btc: {e}"}
+        log.error(f"error_invoice_db_btc: {e}, email={email}")
+        return {"error": f"error_invoice_db_btc: {e}"}
     except Exception as e:
         log.error(f"error_checkout_btc: {e}, email={email}")
         return {"error": f"error_checkout_btc"}
     
-async def checkout_stripe(email, order_id, db, product):
+async def checkout_stripe(email, order_id, invoice_db, product):
     """
     Process a Stripe checkout request.
     
     Args:
         email (str): Customer's email address
         order_id (str): Unique order identifier
-        db (Session): Database session
+        invoice_db (Session): Database session
         product (dict): Product information
         
     Returns:
         dict: Response containing checkout link or error information
     """
     try:
-        invoice = db.query(Invoice).filter(Invoice.email == email).first()
+        invoice = invoice_db.query(Invoice).filter(Invoice.email == email).first()
+        log.info(f"checkout_stripe: got invoice")
 
         if invoice:
             async with invoice_lock:
                 if invoice.payment_type == 'stripe':
                     if invoice_fulfilled(invoice) or invoice_settled(invoice):
-                        return {
-                            "order_state": invoice.order_state
-                        }
+                        return { "order_state": invoice.order_state }
                     elif invoice_processing(invoice):
-                        return {
-                            "checkout_link": checkout_session.url
-                        }
+                        return { "checkout_link": invoice.checkout_link }
                     else: # Failed or Expired or Canceled
                         log.warning(f"invoice (stripe): session_id={invoice.stripe_session_id} state={invoice.stripe_invoice_state} email={email} (failed/expired) deleting from DB")
-                        db.delete(invoice)
-                        db.commit()
+                        invoice_db.delete(invoice)
+                        invoice_db.commit()
                 else:
                     log.error(f"invoice (stripe): email={email} already has a btc invoice. Only one payment type supported")
                     return {"error": "error_only_one_payment_type_supported"}
@@ -541,13 +687,16 @@ async def checkout_stripe(email, order_id, db, product):
         success_url = frontend_url + "/order-status?type=stripe&order_id=" + order_id + "&session_id={CHECKOUT_SESSION_ID}"
         cancel_url = frontend_url + "/guides"
 
+        log.info(f"checkout_stripe: Creating session")
+
         checkout_session = stripe.checkout.Session.create(
             line_items=[{"price": product['stripe_price_id'], "quantity": 1}], # assumes one product
             mode='payment',
             success_url=success_url,
             cancel_url=cancel_url,
             customer_email=email,
-            metadata={"order_id": order_id}
+            metadata={"order_id": order_id},
+            automatic_tax={"enabled": True}
         )
 
         session_id = checkout_session.id
@@ -555,7 +704,7 @@ async def checkout_stripe(email, order_id, db, product):
 
         log.info(f"invoice (stripe): order_id={order_id} session_id={session_id} state={invoice_state} email={email} (new)")
 
-        db_entry = Invoice(email=email,
+        invoice_db_entry = Invoice(email=email,
                            payment_type='stripe',
                            order_id=order_id,
                            order_state="Processing Payment",
@@ -563,8 +712,8 @@ async def checkout_stripe(email, order_id, db, product):
                            product_id=product['id'],
                            stripe_session_id=session_id,
                            stripe_invoice_state=invoice_state)
-        db.add(db_entry)
-        db.commit()
+        invoice_db.add(invoice_db_entry)
+        invoice_db.commit()
         
         async with stripe_webhook_lock:
             if session_id not in stripe_webhook_queue_map:
@@ -572,8 +721,8 @@ async def checkout_stripe(email, order_id, db, product):
 
         return { "checkout_link": checkout_session.url }
     except SQLAlchemyError as e:
-        log.error(f"error_db_stripe: {e}, email={email}")
-        return {"error": f"error_db_stripe: {e}"}
+        log.error(f"error_invoice_db_stripe: {e}, email={email}")
+        return {"error": f"error_invoice_db_stripe: {e}"}
     except Exception as e:
         log.error(f"error_checkout_stripe: {e}, email={email}")
         return {"error": f"error_checkout_stripe"}
@@ -582,21 +731,25 @@ async def checkout_stripe(email, order_id, db, product):
 # API Endpoints
 #
 @app.post("/checkout")
-async def checkout(request: Request, db: Session = Depends(get_invoice_db)):
+async def checkout(request: Request, invoice_db: Session = Depends(get_invoice_db), rate_limit_db: Session = Depends(get_rate_limit_db)):
     """
     Handle checkout requests for both Bitcoin and Stripe payments.
     
     Args:
         request (Request): The HTTP request
-        db (Session): Database session
+        invoice_db (Session): Database session
         
     Returns:
         dict: Response containing checkout link, order state, or error information
     """
     body = await request.json()
     payment_type = body.get('type', '')
-    customer_email = body.get('email', '')
     product_id = body.get('id', '')
+    customer_email = body.get('email', '')
+    customer_city = body.get('city', '')
+    customer_state = body.get('state', '')
+    customer_zipcode = body.get('zipcode', '')
+    customer_country = body.get('country', '')
     
     log.info(f"POST: /checkout: payment_type={payment_type} customer_email={customer_email}")
     
@@ -616,23 +769,34 @@ async def checkout(request: Request, db: Session = Depends(get_invoice_db)):
         log.error(f"POST: /checkout: error_invalid_email: {e}")
         return {"error": "error_invalid_email"}
 
+    if await rate_limit_exceeded(customer_email, product_id, checkout_rate_limit, rate_limit_db):
+        log.error(f"POST: /checkout: error_rate_limit_exceeded: email={customer_email}, product_id={product_id}")
+        return {"error": "error_checkout_rate_limit_exceeded"}
+
     order_id = create_order_id()
 
     if payment_type == 'btc':
-        return await checkout_btc(customer_email, order_id, db, product)
+        return await checkout_btc(customer_email,
+                                  order_id,
+                                  invoice_db,
+                                  product,
+                                  customer_city,
+                                  customer_state,
+                                  customer_zipcode,
+                                  customer_country)
     
     if payment_type == 'stripe':
-        return await checkout_stripe(customer_email, order_id, db, product)
-
+        # Stripe handles location and sales tax for us
+        return await checkout_stripe(customer_email, order_id, invoice_db, product)
 
 @app.post("/stripe-webhook")
-async def stripe_webhook(request: Request, db: Session = Depends(get_invoice_db)):
+async def stripe_webhook(request: Request, invoice_db: Session = Depends(get_invoice_db)):
     """
     Handle Stripe webhook events.
     
     Args:
         request (Request): The HTTP request containing the webhook data
-        db (Session): Database session
+        invoice_db (Session): Database session
         
     Returns:
         dict: Response indicating success or error
@@ -658,7 +822,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_invoice_db)
     session_id = event['data']['object']['id']
     payment_state = event['data']['object']['payment_status']
     email = event['data']['object']['customer_email']
-    invoice = db.query(Invoice).filter(Invoice.email == email).first()
+    invoice = invoice_db.query(Invoice).filter(Invoice.email == email).first()
     
     log.info(f"stripe webhook: payment_state={payment_state} email={email}")
 
@@ -684,7 +848,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_invoice_db)
                 else: # unpaid
                     invoice.order_state = "Canceled" 
 
-                db.commit()
+                invoice_db.commit()
 
                 # Notify the frontend
                 async with stripe_webhook_lock:
@@ -704,7 +868,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_invoice_db)
                     return {"status": "success", "message": "Invoice already paid"}
 
                 invoice.order_state = "Failed"
-                db.commit()
+                invoice_db.commit()
 
                 # Notify the frontend
                 async with stripe_webhook_lock:
@@ -722,7 +886,7 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_invoice_db)
                     return {"status": "success", "message": "Invoice already paid"}
 
                 invoice.order_state = "Expired"
-                db.commit()
+                invoice_db.commit()
 
                 # Notify the frontend
                 async with stripe_webhook_lock:
@@ -776,13 +940,13 @@ async def stripe_webhook_events(session_id: str):
     return StreamingResponse(dequeue_stripe_webhook_data(session_id), media_type="text/event-stream")
 
 @app.post("/btcpay-webhook")
-async def btcpay_webhook(request: Request, db: Session = Depends(get_invoice_db)):
+async def btcpay_webhook(request: Request, invoice_db: Session = Depends(get_invoice_db)):
     """
     Handle BTCPay webhook events.
     
     Args:
         request (Request): The HTTP request containing the webhook data
-        db (Session): Database session
+        invoice_db (Session): Database session
     """
     btcpay_sig_str = request.headers.get('BTCPay-Sig')
     body_bytes = await request.body()
@@ -793,7 +957,7 @@ async def btcpay_webhook(request: Request, db: Session = Depends(get_invoice_db)
         invoice_id = json['invoiceId'] 
         metadata = json['metadata']
         email = metadata['buyerEmail']
-        invoice = db.query(Invoice).filter(Invoice.email == email).first()
+        invoice = invoice_db.query(Invoice).filter(Invoice.email == email).first()
 
         log.info(f"btcpay webhook: state={state} invoice_id={invoice_id} metadata={metadata} email={email}")
 
@@ -820,7 +984,7 @@ async def btcpay_webhook(request: Request, db: Session = Depends(get_invoice_db)
                 elif state == "InvoiceInvalid":
                     invoice.order_state = "Failed"
                 
-                db.commit()
+                invoice_db.commit()
 
                 # Notify the frontend of the state change
                 async with btcpay_webhook_lock:
@@ -891,7 +1055,6 @@ async def get_guides():
                 "title": product['title'],
                 "description": product['description'],
                 "price": product['price'],
-                "tax": product['tax'],
                 "image": product['image']
             }
             guide_list.append(guide)
