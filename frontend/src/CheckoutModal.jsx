@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { CheckoutPage } from "./CheckoutPage";
 
 export const CheckoutModal = ({ isOpen, onClose, guide }) => {
@@ -43,7 +43,7 @@ export const CheckoutModal = ({ isOpen, onClose, guide }) => {
       onClose={handleClose}
       onCancel={handleCancel}
     >
-      <CheckoutPage onClose={handleClose} guide={guide} />
+      <CheckoutPage onClose={handleClose} guide={guide} parentDialog={dialogRef.current} parentIsOpen={isOpen} />
     </dialog>
   );
 };

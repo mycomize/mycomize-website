@@ -2,8 +2,8 @@
 
 import './index.css';
 import React from 'react';
-import { MycomizeHeader } from './MycomizeHeader';
-import { MycomizeFooter } from './MycomizeFooter';
+import { Header } from './Header';
+import { Footer } from './Footer';
 
 import mush0 from '/mush0.webp';
 import mush1 from '/mush1.webp';
@@ -15,9 +15,9 @@ function App() {
   return (
     <>
       <div className="flex flex-col min-h-screen">
-        <MycomizeHeader />
+        <Header />
         <MycomizeHome />
-        <MycomizeFooter />
+        <Footer />
       </div>
     </>
   );

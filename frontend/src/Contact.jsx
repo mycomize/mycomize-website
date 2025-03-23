@@ -1,12 +1,12 @@
-import { MycomizeFooter } from "./MycomizeFooter";
-import { MycomizeHeader } from "./MycomizeHeader";
+import { Footer } from "./Footer";
+import { Header } from "./Header";
 
 export function Contact() {
     return (
         <div id="contact_container" className="min-h-screen flex flex-col">
-            <MycomizeHeader />
+            <Header />
             <MycomizeContact />
-            <MycomizeFooter />
+            <Footer />
         </div>
     );
 }

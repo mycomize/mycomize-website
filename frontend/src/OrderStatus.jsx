@@ -4,8 +4,8 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import nostrQrCode from '/nostr-qrcode.png';
 import { Page404 } from "./Page404";
 import { TryAgainButton } from './Button';
-import { MycomizeHeader } from './MycomizeHeader';
-import { MycomizeFooter } from './MycomizeFooter';
+import { Header } from './Header';
+import { Footer } from './Footer';
 
 async function getInvoice(invoice_id) {
     try {
@@ -88,9 +88,9 @@ export function OrderStatus() {
     
     return (
         <div className="min-h-screen flex flex-col">
-            <MycomizeHeader />
+            <Header />
             <OrderStatusPage order_type={type} order_state={orderState} order_id={order_id} />
-            <MycomizeFooter />
+            <Footer />
         </div>
     );
 }

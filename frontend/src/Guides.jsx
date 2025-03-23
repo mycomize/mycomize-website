@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 
-import { MycomizeHeader } from './MycomizeHeader';
-import { MycomizeFooter } from './MycomizeFooter';
+import { Header } from './Header';
+import { Footer } from './Footer';
 import { GrowButton } from "./Button";
 import { CheckoutModal } from "./CheckoutModal";
 import { DividerDark } from "./Divider";
@@ -20,7 +20,6 @@ async function getGuides() {
     console.error("Exception fetching guides: ", error);
     return null;
   }
-
 }
 
 export function Guides() {
@@ -57,9 +56,9 @@ export function Guides() {
     return (
         <div id="guide_container" className="min-h-screen flex flex-col">
             <CheckoutModal isOpen={modalOpen} onClose={handleModalClose} guide={selectedGuide} />
-            <MycomizeHeader />
+            <Header />
             <MycomizeGuides onClick={handleModalOpen} guides={guidesList} />
-            <MycomizeFooter />
+            <Footer />
         </div>
     );
 }

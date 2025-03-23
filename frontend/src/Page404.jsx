@@ -1,12 +1,12 @@
-import { MycomizeFooter } from "./MycomizeFooter";
-import { MycomizeHeader } from "./MycomizeHeader";
+import { Footer } from "./Footer";
+import { Header } from "./Header";
 
 export function FullPage404() {
     return (
         <>
-            <MycomizeHeader />
+            <Header />
             <Page404 />
-            <MycomizeFooter />
+            <Footer />
         </>
     );  
 }
