@@ -14,12 +14,10 @@ from botocore.exceptions import ClientError
 from database import Invoice, get_invoice_db, RateLimit, get_rate_limit_db
 from email_validator import validate_email, EmailNotValidError
 
-from fastapi import FastAPI, Depends, HTTPException, Request, Header
+from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from mailersend import emails
-
-from pydantic import BaseModel
 
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
@@ -124,12 +122,6 @@ with open("config/config.json", 'r') as f:
 
 FRONTEND_DEV_HTTP_URL = "http://localhost:5173"
 
-# NOTE: be mindful of the protocol (http/https) and port number
-origins = [
-    FRONTEND_DEV_HTTP_URL,
-    frontend_url
-]
-
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s:%(funcName)s %(levelname)s: %(message)s',
@@ -139,14 +131,6 @@ logging.basicConfig(
 log = logging.getLogger("mycomize-backend")
 
 app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 #
 # Helpers 
@@ -495,7 +479,7 @@ async def rate_limit_exceeded(email, product_id, limit, rate_limit_db):
 
     log.info(f"checkout rate limit: email={email}, product_id={product_id}, count={count}")
 
-    return count > limit
+    return count >= limit
 
 async def create_btcpay_invoice(customer_email, order_id, product, sales_tax):
     """
@@ -750,18 +734,18 @@ async def checkout(request: Request, invoice_db: Session = Depends(get_invoice_d
     customer_state = body.get('state', '')
     customer_zipcode = body.get('zipcode', '')
     customer_country = body.get('country', '')
-    
+
     log.info(f"POST: /checkout: payment_type={payment_type} customer_email={customer_email}")
-    
+
     if payment_type != 'btc' and  payment_type != 'stripe':
         log.error(f"POST: /checkout: error_invalid_payment_type: {payment_type}")
         return {"error": "error_invalid_payment_type"}
-    
+
     product = find_product(product_id)
     if product is None:
         log.error(f"POST: /checkout: error_invalid_product_id: {product_id}")
         return {"error": "error_invalid_product_id"}
-    
+
     try:
         email_info = validate_email(customer_email, check_deliverability=True)
         customer_email = email_info.normalized
@@ -770,7 +754,7 @@ async def checkout(request: Request, invoice_db: Session = Depends(get_invoice_d
         return {"error": "error_invalid_email"}
 
     if await rate_limit_exceeded(customer_email, product_id, checkout_rate_limit, rate_limit_db):
-        log.error(f"POST: /checkout: error_rate_limit_exceeded: email={customer_email}, product_id={product_id}")
+        log.error(f"POST: /checkout: error_rate_limit_exceeded: email={customer_email}, product_id={product_id} ip={request.client.host}")
         return {"error": "error_checkout_rate_limit_exceeded"}
 
     order_id = create_order_id()
