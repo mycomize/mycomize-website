@@ -31,7 +31,7 @@ const company = [
   { name: 'Blog', href: '#', description: 'Read our latest announcements and get perspectives from our team' },
 ]
 
-export function MycomizeHeader() {
+export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
 
   return (
@@ -243,7 +243,7 @@ export function MycomizeHeader() {
               </div>
             </div>
           </div>
-          <div className="sticky bottom-0 grid grid-cols-2 divide-x divide-gray-900/5 bg-gray-50 text-center">
+          {/*<div className="sticky bottom-0 grid grid-cols-2 divide-x divide-gray-900/5 bg-gray-50 text-center">
             {callsToAction.map((item) => (
               <a
                 key={item.name}
@@ -253,7 +253,7 @@ export function MycomizeHeader() {
                 {item.name}
               </a>
             ))}
-          </div>
+          </div> */}
         </DialogPanel>
       </Dialog>
     </header>

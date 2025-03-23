@@ -64,7 +64,7 @@ const navigation = [
   },
 ]
 
-export function MycomizeFooter() {
+export function Footer() {
   return (
     <footer className="bg-white mt-auto">
       <DividerDark />
