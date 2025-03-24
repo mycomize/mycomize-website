@@ -25,6 +25,7 @@ class Invoice(Base):
     order_state = Column(String, nullable=False)
     checkout_link= Column(String, nullable=False)
     product_id = Column(String, nullable=False)
+    fulfillment_time = Column(String, nullable=True)
     stripe_session_id = Column(String, nullable=True, index=True)
     stripe_invoice_state = Column(String, nullable=True)
     btcpay_invoice_id = Column(String, nullable=True, index=True)

@@ -8,17 +8,15 @@ import logging
 import string
 import stripe
 import secrets
-
+j
 from botocore.exceptions import ClientError
-
 from database import Invoice, get_invoice_db, RateLimit, get_rate_limit_db
+from datetime import datetime
 from email_validator import validate_email, EmailNotValidError
-
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from mailersend import emails
-
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
@@ -40,6 +38,8 @@ btcpay_webhook_lock = asyncio.Lock()
 stripe_webhook_lock = asyncio.Lock()
 invoice_lock = asyncio.Lock()
 rate_limit_lock = asyncio.Lock()
+
+s3_lifecycle_configured = False
 
 product_list = [
     {
@@ -115,7 +115,8 @@ with open("config/config.json", 'r') as f:
     aws_secret_access_key = config['aws_secret_access_key']
     aws_region = config['aws_region']
     s3_bucket_name = config['s3_bucket_name']
-    s3_url_expiration = config.get('s3_url_expiration', 172800)  # Default: 2 days in seconds
+    s3_url_expiration_seconds = config.get('s3_url_expiration_seconds', 172800)  # Default: 2 days in seconds
+    s3_url_expiration_days = s3_url_expiration_seconds // 86400
     
     frontend_url = config['frontend_url']
     init_product_list(config)
@@ -248,12 +249,12 @@ def fulfill_order(email, order_id, product_id, type):
 def create_presigned_url_list(email, order_id, product):
     """
     Generate a presigned URL for a customer to access their purchased guide.
-    
+
     Args:
         email (str): Customer's email address
         order_id (str): Unique order identifier
         product (obj): Guide being purchased
-        
+
     Returns:
         str: Presigned URL or None if there was an error
     """
@@ -269,7 +270,7 @@ def create_presigned_url_list(email, order_id, product):
         # Create a unique object key for this customer
         email_hash = hashlib.md5(email.encode()).hexdigest()
         url_list = []
-        
+
         for product_file in product['file_list']:
             customer_file = f"{product['id']}/customers/{email_hash}/{order_id}/{product_file}"
         
@@ -287,12 +288,31 @@ def create_presigned_url_list(email, order_id, product):
                     'Bucket': s3_bucket_name,
                     'Key': customer_file
                 },
-                ExpiresIn=s3_url_expiration
+                ExpiresIn=s3_url_expiration_seconds
             )
         
-            log.info(f"created presigned URL that expires in {s3_url_expiration} seconds for email={email}, order_id={order_id} (customer_file={customer_file})")
+            log.info(f"created presigned URL that expires in {s3_url_expiration_seconds} seconds for email={email}, order_id={order_id} (customer_file={customer_file})")
             url_list.append(presigned_url) 
         
+        if not s3_lifecycle_configured:
+            prefix=f"{product['id']}/customers/"
+
+            s3_client.put_bucket_lifecycle_configuration(
+                Bucket=s3_bucket_name,
+                LifecycleConfiguration={
+                    'Rules': [
+                        {
+                            'Expiration': {'Days': s3_url_expiration_days + 1},
+                            'ID': 'expire-3-days',
+                            'Filter': {'Prefix': prefix},
+                            'Status': 'Enabled',
+                        },
+                    ],
+                },
+            )
+
+            s3_lifecycle_configured = True
+
         return url_list
 
     except ClientError as e:
@@ -827,6 +847,7 @@ async def stripe_webhook(request: Request, invoice_db: Session = Depends(get_inv
                     
                     if success:
                         invoice.order_state = 'Fulfilled'
+                        invoice.fulfillment_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
                     else:
                         log.error(f"failed to fulfill stripe order for email={email}, order_id={invoice.order_id}")
                 else: # unpaid
@@ -961,6 +982,7 @@ async def btcpay_webhook(request: Request, invoice_db: Session = Depends(get_inv
 
                     if success:
                         invoice.order_state = "Fulfilled"
+                        invoice.fulfillment_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
                     else:
                         log.error(f"failed to fulfill btcpay order for email={email}, order_id={invoice.order_id}")
                 elif state == "InvoiceExpired":
