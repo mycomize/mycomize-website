@@ -8,7 +8,7 @@ import logging
 import string
 import stripe
 import secrets
-j
+
 from botocore.exceptions import ClientError
 from database import Invoice, get_invoice_db, RateLimit, get_rate_limit_db
 from datetime import datetime
@@ -28,7 +28,7 @@ class Location:
         self.state = state
         self.postal_code = postal_code
         self.country = country
-        
+
     def in_colorado(self):
         return self.state == 'CO' and self.country == 'US'
 
@@ -57,7 +57,7 @@ product_list = [
 def init_product_list(config):
     """
     Initialize the product list with configuration values.
-    
+
     Args:
         config (dict): Configuration dictionary containing product pricing and IDs
     """
@@ -70,10 +70,10 @@ def init_product_list(config):
 def find_product(product_id):
     """
     Find a product by its ID.
-    
+
     Args:
         product_id (str): The ID of the product to find
-        
+
     Returns:
         dict: The product dictionary if found, None otherwise
     """
@@ -84,12 +84,13 @@ def find_product(product_id):
 
 with open("config/config.json", 'r') as f:
     config = json.load(f)
-    
+
     # BTCPay configs
     btcpay_url = config['btcpay_url']
     btcpay_store_id = config['btcpay_store_id']
     btcpay_api_key = config['btcpay_api_key']
     btcpay_webhook_secret = config['btcpay_webhook_secret']
+    btcpay_invoice_expiration_minutes = config['btcpay_invoice_expiration_minutes']
 
     # Rate limit configs
     checkout_rate_limit = config['checkout_rate_limit']
@@ -97,11 +98,11 @@ with open("config/config.json", 'r') as f:
     # Colorado GIS configs
     colorado_gis_url = config['colorado_gis_url']
     colorado_gis_key = config['colorado_gis_key']
-    
+
     # Google maps configs
     google_maps_api_key = config['google_maps_api_key']
     google_maps_addr_validation_url = config['google_maps_addr_validation_url']
-    
+
     # Stripe configs
     stripe.api_key = config['stripe_secret_key']
     stripe_webhook_secret = config['stripe_webhook_secret']
@@ -117,7 +118,7 @@ with open("config/config.json", 'r') as f:
     s3_bucket_name = config['s3_bucket_name']
     s3_url_expiration_seconds = config.get('s3_url_expiration_seconds', 172800)  # Default: 2 days in seconds
     s3_url_expiration_days = s3_url_expiration_seconds // 86400
-    
+
     frontend_url = config['frontend_url']
     init_product_list(config)
 
@@ -134,15 +135,15 @@ log = logging.getLogger("mycomize-backend")
 app = FastAPI()
 
 #
-# Helpers 
+# Helpers
 #
 def invoice_settled(invoice):
     """
     Check if an invoice is in the 'Settled' state.
-    
+
     Args:
         invoice (Invoice): The invoice object to check
-        
+
     Returns:
         bool: True if the invoice is settled, False otherwise
     """
@@ -151,10 +152,10 @@ def invoice_settled(invoice):
 def invoice_fulfilled(invoice):
     """
     Check if an invoice is in the 'Fulfilled' state.
-    
+
     Args:
         invoice (Invoice): The invoice object to check
-        
+
     Returns:
         bool: True if the invoice is fulfilled, False otherwise
     """
@@ -163,10 +164,10 @@ def invoice_fulfilled(invoice):
 def invoice_processing(invoice):
     """
     Check if an invoice is in the 'Processing Payment' state.
-    
+
     Args:
         invoice (Invoice): The invoice object to check
-        
+
     Returns:
         bool: True if the invoice is processing, False otherwise
     """
@@ -175,10 +176,10 @@ def invoice_processing(invoice):
 def invoice_failed(invoice):
     """
     Check if an invoice is in the 'Failed' state.
-    
+
     Args:
         invoice (Invoice): The invoice object to check
-        
+
     Returns:
         bool: True if the invoice has failed, False otherwise
     """
@@ -187,10 +188,10 @@ def invoice_failed(invoice):
 def invoice_expired(invoice):
     """
     Check if an invoice is in the 'Expired' state.
-    
+
     Args:
         invoice (Invoice): The invoice object to check
-        
+
     Returns:
         bool: True if the invoice has expired, False otherwise
     """
@@ -199,10 +200,10 @@ def invoice_expired(invoice):
 def invoice_canceled(invoice):
     """
     Check if an invoice is in the 'Canceled' state.
-    
+
     Args:
         invoice (Invoice): The invoice object to check
-        
+
     Returns:
         bool: True if the invoice is canceled, False otherwise
     """
@@ -211,10 +212,10 @@ def invoice_canceled(invoice):
 def create_order_id(length=8):
     """
     Create a random order ID consisting of uppercase letters and digits.
-    
+
     Args:
         length (int, optional): The length of the order ID. Defaults to 8.
-        
+
     Returns:
         str: A random order ID
     """
@@ -224,18 +225,18 @@ def create_order_id(length=8):
 def fulfill_order(email, order_id, product_id, type):
     """
     Fulfill an order by creating presigned URLs and sending an email to the customer.
-    
+
     Args:
         email (str): Customer's email address
         order_id (str): Unique order identifier
         product_id (str): ID of the product being purchased
-        
+
     Returns:
         bool: True if the order was successfully fulfilled, False otherwise
     """
     product = find_product(product_id)
     if product is None:
-        log.error(f"failed to find product with id={product_id} for email={email}, order_id={order_id}") 
+        log.error(f"failed to find product with id={product_id} for email={email}, order_id={order_id}")
         return False
 
     presigned_url_list = create_presigned_url_list(email, order_id, product)
@@ -266,21 +267,21 @@ def create_presigned_url_list(email, order_id, product):
             aws_access_key_id=aws_access_key_id,
             aws_secret_access_key=aws_secret_access_key
         )
-        
+
         # Create a unique object key for this customer
         email_hash = hashlib.md5(email.encode()).hexdigest()
         url_list = []
 
         for product_file in product['file_list']:
             customer_file = f"{product['id']}/customers/{email_hash}/{order_id}/{product_file}"
-        
+
             # Copy the guide to the customer-specific location
             s3_client.copy_object(
                 Bucket=s3_bucket_name,
                 CopySource={'Bucket': s3_bucket_name, 'Key': product_file},
                 Key=customer_file
             )
-            
+
             # Generate a presigned URL for the customer-specific object
             presigned_url = s3_client.generate_presigned_url(
                 'get_object',
@@ -290,10 +291,10 @@ def create_presigned_url_list(email, order_id, product):
                 },
                 ExpiresIn=s3_url_expiration_seconds
             )
-        
+
             log.info(f"created presigned URL that expires in {s3_url_expiration_seconds} seconds for email={email}, order_id={order_id} (customer_file={customer_file})")
-            url_list.append(presigned_url) 
-        
+            url_list.append(presigned_url)
+
         if not s3_lifecycle_configured:
             prefix=f"{product['id']}/customers/"
 
@@ -325,13 +326,13 @@ def create_presigned_url_list(email, order_id, product):
 def send_email(email, order_id, presigned_url_list, product, type):
     """
     Send an email to the customer with their presigned URLs.
-    
+
     Args:
         email (str): Customer's email address
         order_id (str): Unique order identifier
         presigned_url_list (list): Presigned URL for accessing the guide
         product (dict): Product information including title
-        
+
     Returns:
         bool: True if email was sent successfully, False otherwise
     """
@@ -349,7 +350,7 @@ def send_email(email, order_id, presigned_url_list, product, type):
             epub_link = url
         else:
             log.warning(f"unsupported file type: {url}")
-    
+
     mailer = emails.NewEmail(mailersend_api_key)
     mail_body = {}
 
@@ -357,11 +358,11 @@ def send_email(email, order_id, presigned_url_list, product, type):
         "name": "Connor",
         "email": "connor@mycomize.com",
     }
-    
+
     recipients  = [{
         "email": email
     }]
-    
+
     personalization = [
         {
             "email": email,
@@ -374,14 +375,14 @@ def send_email(email, order_id, presigned_url_list, product, type):
             }
         }
     ]
-    
+
     mailer.set_mail_from(mail_from, mail_body)
     mailer.set_mail_to(recipients, mail_body)
     mailer.set_template(mailersend_template_id, mail_body)
     mailer.set_personalization(personalization, mail_body)
 
     response = mailer.send(mail_body).replace('\n', ' ')
-    
+
     if "200" in response or "202" in response:
         log.info(f"sent fulfillment email to {email}, type={type}")
         return True
@@ -402,24 +403,24 @@ async def validate_location(city, state, postal_code, country):
             "addressLines": [f"{city}, {state} {postal_code}"]
         }
     }
-    
+
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=data)
-        
+
     if response.status_code == 200:
         data = response.json()
-        
-        valid = True 
+
+        valid = True
         component_list = data['result']['address']['addressComponents']
 
         for component in component_list:
             if component['confirmationLevel'] != 'CONFIRMED':
                 valid = False
                 break
-        
+
         if valid and len(component_list) != 4:
             valid = False
-            
+
         if valid:
             city = data['result']['address']['postalAddress']['locality']
             state = data['result']['address']['postalAddress']['administrativeArea']
@@ -428,28 +429,28 @@ async def validate_location(city, state, postal_code, country):
 
             log.info(f"validated address: city={city}, state={state}, postal_code={postal_code}, country={country}")
         else:
-            log.warning(f"failed to validateAddress: city={city}, state={state}, postal_code={postal_code}, country={country} (status_code={response.status_code})") 
-                
+            log.warning(f"failed to validateAddress: city={city}, state={state}, postal_code={postal_code}, country={country} (status_code={response.status_code})")
+
         return Location(valid, city, state, postal_code, country)
     else:
-        log.warning(f"failed to validateAddress: city={city}, state={state}, postal_code={postal_code}, country={country} (status_code={response.status_code})") 
+        log.warning(f"failed to validateAddress: city={city}, state={state}, postal_code={postal_code}, country={country} (status_code={response.status_code})")
 
     return Location(False, city, state, postal_code, country)
-    
+
 async def compute_sales_tax(location):
     """
     Compute the sales tax for a given location.
-    
+
     Args:
         location (Location): A valid location
-        
+
     Returns:
         float: The computed sales tax rate
     """
-    
+
     if not location.in_colorado():
         return 0.00
-    
+
     city = location.city
     state = location.state
     zipcode = location.postal_code
@@ -467,18 +468,19 @@ async def compute_sales_tax(location):
             f"{city}, {state} {zipcode}"
         }
     }
-    
+
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=data)
-        
+
     if response.status_code == 200:
         data = response.json()
         sales_tax = data['totalSalesTax']
+        log.info(f"computed colorado sales tax: city={city}, state={state}, zipcode={zipcode}, sales_tax={sales_tax}")
         return sales_tax
     else:
-        log.error(f"failed to compute colorado sales tax: city={city}, state={state}, zipcode={zipcode}, (status_code={response.status_code})") 
+        log.error(f"failed to compute colorado sales tax: city={city}, state={state}, zipcode={zipcode}, (status_code={response.status_code})")
     return -1.00
-    
+
 async def rate_limit_exceeded(email, product_id, limit, rate_limit_db):
     count = 0
 
@@ -501,16 +503,17 @@ async def rate_limit_exceeded(email, product_id, limit, rate_limit_db):
 
     return count >= limit
 
-async def create_btcpay_invoice(customer_email, order_id, product, sales_tax):
+async def create_btcpay_invoice(customer_email, order_id, product, sales_tax, location):
     """
     Create a new invoice in BTCPay Server.
-    
+
     Args:
         customer_email (str): Customer's email address
         order_id (str): Unique order identifier
         product (dict): Product information including price and title
         sales_tax (float): Sales tax as a percentage
-        
+        location (Location): Customer's location
+
     Returns:
         dict: The created invoice data if successful, or an error dictionary
     """
@@ -526,6 +529,10 @@ async def create_btcpay_invoice(customer_email, order_id, product, sales_tax):
     data = {
         "metadata": {
             "buyerEmail": customer_email,
+            "buyerCity": location.city,
+            "buyerState": location.state,
+            "buyerZip": location.postal_code,
+            "buyerCountry": location.country,
             "itemDesc": product['title'],
             "orderId": order_id,
             "taxIncluded": total_tax,
@@ -537,18 +544,17 @@ async def create_btcpay_invoice(customer_email, order_id, product, sales_tax):
         "checkout": {
             "speedPolicy": "MediumSpeed", # 1 confirmation
             "paymentMethods": ["BTC", "BTC-LightningNetwork"],
-            # TODO: change me
-            "expirationMinutes": 1,
+            "expirationMinutes": btcpay_invoice_expiration_minutes,
             "redirectURL": frontend_url + "/order-status?type=btc&order_id=" + order_id + "&invoice_id={InvoiceId}",
             "redirectAutomatically": True,
         },
         "amount": str(round(product['price'] + total_tax, 2)),
         "currency": "USD"
     }
-    
+
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=data)
-        
+
     if response.status_code == 200:
         return response.json()
     else:
@@ -562,12 +568,12 @@ async def create_btcpay_invoice(customer_email, order_id, product, sales_tax):
 def verify_btcpay_webhook(body_bytes, btcpay_sig_str, webhook_secret_str):
     """
     Verify the signature of a BTCPay webhook request.
-    
+
     Args:
         body_bytes (bytes): The raw body of the webhook request
         btcpay_sig_str (str): The signature provided in the BTCPay-Sig header
         webhook_secret_str (str): The webhook secret used to verify the signature
-        
+
     Returns:
         bool: True if the signature is valid, False otherwise
     """
@@ -576,33 +582,33 @@ def verify_btcpay_webhook(body_bytes, btcpay_sig_str, webhook_secret_str):
         body_bytes,
         digestmod=hashlib.sha256
     ).hexdigest()
-    
+
     computed_hash = "sha256=" + computed_hash
     return hmac.compare_digest(computed_hash, btcpay_sig_str)
 
 async def checkout_btc(email, order_id, invoice_db, product, city, state, zipcode, country):
     """
     Process a Bitcoin checkout request.
-    
+
     Args:
         email (str): Customer's email address
         order_id (str): Unique order identifier
         invoice_db (Session): Database session
         product (dict): Product information
-        
+
     Returns:
         dict: Response containing checkout link or error information
     """
     try:
         invoice = invoice_db.query(Invoice).filter(Invoice.email == email).first()
-        
+
         if invoice:
             async with invoice_lock:
                 if invoice.payment_type == 'btc':
                     if invoice_settled(invoice) or invoice_fulfilled(invoice):
                         return {"order_state": invoice.order_state}
                     elif invoice_processing(invoice):
-                        return {"checkout_link": invoice.checkout_link} 
+                        return {"checkout_link": invoice.checkout_link}
                     else: # Failed or Expired or Canceled
                         log.warning(f"invoice (btcpay): invoice_id={invoice.btcpay_invoice_id} state={invoice.btcpay_invoice_state} email={email} (failed/expired) deleting from DB")
                         invoice_db.delete(invoice)
@@ -610,24 +616,24 @@ async def checkout_btc(email, order_id, invoice_db, product, city, state, zipcod
                 else:
                     log.error(f"invoice (btcpay): email={email} already has a stripe invoice. Only one payment type supported")
                     return {"error": "error_only_one_payment_type_supported"}
-    
+
         location = await validate_location(city, state, zipcode, country)
-        if not location.valid: 
+        if not location.valid:
             return {"error": "error_invalid_location"}
 
         sales_tax = await compute_sales_tax(location)
         if sales_tax < 0.00:
             return {"error": "error_compute_sales_tax_failed"}
 
-        invoice = await create_btcpay_invoice(email, order_id, product, sales_tax)
+        invoice = await create_btcpay_invoice(email, order_id, product, sales_tax, location)
         if "error" in invoice:
             return invoice
 
         invoice_id = invoice["id"]
         invoice_state = invoice["status"]
-    
+
         log.info(f"invoice (btcpay): order_id={order_id} invoice_id={invoice_id} state={invoice_state} email={email} (new)")
-    
+
         invoice_db_entry = Invoice(email=email,
                                    payment_type='btc',
                                    order_id=order_id,
@@ -640,14 +646,14 @@ async def checkout_btc(email, order_id, invoice_db, product, city, state, zipcod
                                    btcpay_state=location.state,
                                    btcpay_postal_code=location.postal_code,
                                    btcpay_country=location.country)
-    
+
         invoice_db.add(invoice_db_entry)
         invoice_db.commit()
-    
+
         async with btcpay_webhook_lock:
             if invoice_id not in btcpay_webhook_queue_map:
                 btcpay_webhook_queue_map[invoice_id] = asyncio.Queue()
-    
+
         return { "checkout_link": invoice["checkoutLink"] }
     except SQLAlchemyError as e:
         log.error(f"error_invoice_db_btc: {e}, email={email}")
@@ -655,17 +661,17 @@ async def checkout_btc(email, order_id, invoice_db, product, city, state, zipcod
     except Exception as e:
         log.error(f"error_checkout_btc: {e}, email={email}")
         return {"error": f"error_checkout_btc"}
-    
+
 async def checkout_stripe(email, order_id, invoice_db, product):
     """
     Process a Stripe checkout request.
-    
+
     Args:
         email (str): Customer's email address
         order_id (str): Unique order identifier
         invoice_db (Session): Database session
         product (dict): Product information
-        
+
     Returns:
         dict: Response containing checkout link or error information
     """
@@ -718,7 +724,7 @@ async def checkout_stripe(email, order_id, invoice_db, product):
                            stripe_invoice_state=invoice_state)
         invoice_db.add(invoice_db_entry)
         invoice_db.commit()
-        
+
         async with stripe_webhook_lock:
             if session_id not in stripe_webhook_queue_map:
                 stripe_webhook_queue_map[session_id] = asyncio.Queue()
@@ -738,11 +744,11 @@ async def checkout_stripe(email, order_id, invoice_db, product):
 async def checkout(request: Request, invoice_db: Session = Depends(get_invoice_db), rate_limit_db: Session = Depends(get_rate_limit_db)):
     """
     Handle checkout requests for both Bitcoin and Stripe payments.
-    
+
     Args:
         request (Request): The HTTP request
         invoice_db (Session): Database session
-        
+
     Returns:
         dict: Response containing checkout link, order state, or error information
     """
@@ -788,7 +794,7 @@ async def checkout(request: Request, invoice_db: Session = Depends(get_invoice_d
                                   customer_state,
                                   customer_zipcode,
                                   customer_country)
-    
+
     if payment_type == 'stripe':
         # Stripe handles location and sales tax for us
         return await checkout_stripe(customer_email, order_id, invoice_db, product)
@@ -797,11 +803,11 @@ async def checkout(request: Request, invoice_db: Session = Depends(get_invoice_d
 async def stripe_webhook(request: Request, invoice_db: Session = Depends(get_invoice_db)):
     """
     Handle Stripe webhook events.
-    
+
     Args:
         request (Request): The HTTP request containing the webhook data
         invoice_db (Session): Database session
-        
+
     Returns:
         dict: Response indicating success or error
     """
@@ -811,7 +817,7 @@ async def stripe_webhook(request: Request, invoice_db: Session = Depends(get_inv
     if not stripe_sig:
         raise HTTPException(status_code=400, detail="Missing Stripe-Signature header")
 
-    try: 
+    try:
         # Verify the webhook signature
         event = stripe.Webhook.construct_event(body, stripe_sig, stripe_webhook_secret)
     except ValueError as e:
@@ -822,12 +828,12 @@ async def stripe_webhook(request: Request, invoice_db: Session = Depends(get_inv
         # Invalid signature
         log.error(f"POST: /stripe-webhook: error_invalid_signature: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid signature: {e}")
-    
+
     session_id = event['data']['object']['id']
     payment_state = event['data']['object']['payment_status']
     email = event['data']['object']['customer_email']
     invoice = invoice_db.query(Invoice).filter(Invoice.email == email).first()
-    
+
     log.info(f"stripe webhook: payment_state={payment_state} email={email}")
 
     if event['type'] == 'checkout.session.completed' or event['type'] == 'checkout.session.async_payment_succeeded':
@@ -840,18 +846,18 @@ async def stripe_webhook(request: Request, invoice_db: Session = Depends(get_inv
 
                 invoice.stripe_invoice_state = payment_state
                 log.info(f"invoice (stripe): state updated to {payment_state} for {email}")
-                
+
                 if payment_state == 'paid':
                     invoice.order_state = "Settled"
                     success = fulfill_order(email, invoice.order_id, invoice.product_id, type="stripe")
-                    
+
                     if success:
                         invoice.order_state = 'Fulfilled'
                         invoice.fulfillment_time = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
                     else:
                         log.error(f"failed to fulfill stripe order for email={email}, order_id={invoice.order_id}")
                 else: # unpaid
-                    invoice.order_state = "Canceled" 
+                    invoice.order_state = "Canceled"
 
                 invoice_db.commit()
 
@@ -904,10 +910,10 @@ async def stripe_webhook(request: Request, invoice_db: Session = Depends(get_inv
 async def dequeue_stripe_webhook_data(session_id: str):
     """
     Stream Stripe webhook events to the client.
-    
+
     Args:
         session_id (str): The Stripe session ID to get events for
-        
+
     Yields:
         str: Server-sent event data
     """
@@ -929,16 +935,16 @@ async def dequeue_stripe_webhook_data(session_id: str):
             yield f"event: error\ndata: queue cancelled stripe webhook\n\n"
 
         await asyncio.sleep(0.5)
-    
+
 
 @app.get("/stripe-webhook-events")
 async def stripe_webhook_events(session_id: str):
     """
     Endpoint to stream Stripe webhook events to the client.
-    
+
     Args:
         session_id (str): The Stripe session ID to get events for
-        
+
     Returns:
         StreamingResponse: Server-sent events stream
     """
@@ -948,7 +954,7 @@ async def stripe_webhook_events(session_id: str):
 async def btcpay_webhook(request: Request, invoice_db: Session = Depends(get_invoice_db)):
     """
     Handle BTCPay webhook events.
-    
+
     Args:
         request (Request): The HTTP request containing the webhook data
         invoice_db (Session): Database session
@@ -958,8 +964,8 @@ async def btcpay_webhook(request: Request, invoice_db: Session = Depends(get_inv
 
     if verify_btcpay_webhook(body_bytes, btcpay_sig_str, btcpay_webhook_secret):
         json = await request.json()
-        state = json['type'] 
-        invoice_id = json['invoiceId'] 
+        state = json['type']
+        invoice_id = json['invoiceId']
         metadata = json['metadata']
         email = metadata['buyerEmail']
         invoice = invoice_db.query(Invoice).filter(Invoice.email == email).first()
@@ -989,13 +995,13 @@ async def btcpay_webhook(request: Request, invoice_db: Session = Depends(get_inv
                     invoice.order_state = "Expired"
                 elif state == "InvoiceInvalid":
                     invoice.order_state = "Failed"
-                
+
                 invoice_db.commit()
 
                 # Notify the frontend of the state change
                 async with btcpay_webhook_lock:
                     queue = btcpay_webhook_queue_map[invoice_id]
-                    await queue.put({"order_state": invoice.order_state}) 
+                    await queue.put({"order_state": invoice.order_state})
         else:
             log.warning(f"received webhook {state} for {email} not present in invoices DB")
     else:
@@ -1004,10 +1010,10 @@ async def btcpay_webhook(request: Request, invoice_db: Session = Depends(get_inv
 async def dequeue_btcpay_webhook_data(invoice_id: str):
     """
     Stream BTCPay webhook events to the client.
-    
+
     Args:
         invoice_id (str): The BTCPay invoice ID to get events for
-        
+
     Yields:
         str: Server-sent event data
     """
@@ -1027,17 +1033,17 @@ async def dequeue_btcpay_webhook_data(invoice_id: str):
             yield f"event: error\ndata: queue timeout btcpay webhook\n\n"
         except asyncio.CancelledError:
             yield f"event: error\ndata: queue cancelled btcpay webhook\n\n"
-            
+
         await asyncio.sleep(0.5)
 
 @app.get("/btcpay-webhook-events")
 async def btcpay_webhook_events(invoice_id: str):
     """
     Stream BTCPay webhook events to the client.
-    
+
     Args:
         invoice_id (str): The BTCPay invoice ID to get events for
-        
+
     Returns:
         StreamingResponse: Server-sent events stream
     """
@@ -1047,13 +1053,13 @@ async def btcpay_webhook_events(invoice_id: str):
 async def get_guides():
     """
     Get a list of available guides.
-    
+
     Returns:
         dict
     """
     print(f"GET: /guides")
     guide_list = []
-    
+
     for product in product_list:
         if product['type'] == 'guide':
             guide = {
@@ -1064,5 +1070,5 @@ async def get_guides():
                 "image": product['image']
             }
             guide_list.append(guide)
-    
+
     return {"guides": guide_list}
