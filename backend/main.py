@@ -10,11 +10,15 @@ import stripe
 import secrets
 
 from botocore.exceptions import ClientError
-from database import Invoice, get_invoice_db, RateLimit, get_rate_limit_db
+from database import (
+    Invoice, get_prod_invoice_db, get_dev_invoice_db, 
+    RateLimit, get_prod_rate_limit_db, get_dev_rate_limit_db,
+    ApiUsage, get_prod_api_usage_db, get_dev_api_usage_db, 
+    increment_api_usage
+)
 from datetime import datetime
 from email_validator import validate_email, EmailNotValidError
 from fastapi import FastAPI, Depends, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from mailersend import emails
 from sqlalchemy import and_
@@ -40,6 +44,7 @@ invoice_lock = asyncio.Lock()
 rate_limit_lock = asyncio.Lock()
 
 s3_lifecycle_configured = False
+FRONTEND_DEV_HTTP_URL = "http://localhost:5173"
 
 product_list = [
     {
@@ -85,6 +90,8 @@ def find_product(product_id):
 with open("config/config.json", 'r') as f:
     config = json.load(f)
 
+    deployment_type = config['deployment_type']
+    
     # BTCPay configs
     btcpay_url = config['btcpay_url']
     btcpay_store_id = config['btcpay_store_id']
@@ -119,10 +126,13 @@ with open("config/config.json", 'r') as f:
     s3_url_expiration_seconds = config.get('s3_url_expiration_seconds', 172800)  # Default: 2 days in seconds
     s3_url_expiration_days = s3_url_expiration_seconds // 86400
 
-    frontend_url = config['frontend_url']
     init_product_list(config)
+    
+    frontend_url = config['frontend_url'] if deployment_type == "prod" else FRONTEND_DEV_HTTP_URL
+    get_invoice_db = get_prod_invoice_db if deployment_type == "prod" else get_dev_invoice_db
+    get_rate_limit_db = get_prod_rate_limit_db if deployment_type == "prod" else get_dev_rate_limit_db
+    get_api_usage_db = get_prod_api_usage_db if deployment_type == "prod" else get_dev_api_usage_db
 
-FRONTEND_DEV_HTTP_URL = "http://localhost:5173"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -273,7 +283,7 @@ def create_presigned_url_list(email, order_id, product):
         url_list = []
 
         for product_file in product['file_list']:
-            customer_file = f"{product['id']}/customers/{email_hash}/{order_id}/{product_file}"
+            customer_file = f"{deployment_type}/{product['id']}/customers/{email_hash}/{order_id}/{product_file}"
 
             # Copy the guide to the customer-specific location
             s3_client.copy_object(
@@ -296,7 +306,7 @@ def create_presigned_url_list(email, order_id, product):
             url_list.append(presigned_url)
 
         if not s3_lifecycle_configured:
-            prefix=f"{product['id']}/customers/"
+            prefix=f"{deployment_type}/{product['id']}/customers/"
 
             s3_client.put_bucket_lifecycle_configuration(
                 Bucket=s3_bucket_name,
@@ -323,7 +333,7 @@ def create_presigned_url_list(email, order_id, product):
         log.error(f"unexpected error creating presigned URL: {e}")
         return None
 
-def send_email(email, order_id, presigned_url_list, product, type):
+async def send_email(email, order_id, presigned_url_list, product, type, api_usage_db: Session = Depends(get_api_usage_db)):
     """
     Send an email to the customer with their presigned URLs.
 
@@ -332,6 +342,8 @@ def send_email(email, order_id, presigned_url_list, product, type):
         order_id (str): Unique order identifier
         presigned_url_list (list): Presigned URL for accessing the guide
         product (dict): Product information including title
+        type (str): Type of payment (btc or stripe)
+        api_usage_db (Session): API usage database session
 
     Returns:
         bool: True if email was sent successfully, False otherwise
@@ -381,7 +393,13 @@ def send_email(email, order_id, presigned_url_list, product, type):
     mailer.set_template(mailersend_template_id, mail_body)
     mailer.set_personalization(personalization, mail_body)
 
+
     response = mailer.send(mail_body).replace('\n', ' ')
+
+    # Track email API call
+    count, is_milestone = await increment_api_usage(api_usage_db, 'mailersend_api')
+    if is_milestone:
+        log.warning(f"Mailersend API call count reached {count} count milestone")
 
     if "200" in response or "202" in response:
         log.info(f"sent fulfillment email to {email}, type={type}")
@@ -390,7 +408,7 @@ def send_email(email, order_id, presigned_url_list, product, type):
         log.error(f"failed to send fulfillment email to {email}, pdf_link={pdf_link}, epub_link={epub_link}, type={type}, (response={response})")
         return False
 
-async def validate_location(city, state, postal_code, country):
+async def validate_location(city, state, postal_code, country, api_usage_db: Session = Depends(get_api_usage_db)):
     url = google_maps_addr_validation_url + f"?key={google_maps_api_key}"
 
     headers = {
@@ -406,6 +424,12 @@ async def validate_location(city, state, postal_code, country):
 
     async with httpx.AsyncClient() as client:
         response = await client.post(url, headers=headers, json=data)
+
+    # Track API call to address validation service
+    count, is_milestone = await increment_api_usage(api_usage_db, 'google_maps_addr_validation_api')
+    if is_milestone:
+        log.warning(f"Address validation API call count reached {count} count milestone")
+
 
     if response.status_code == 200:
         data = response.json()
@@ -640,6 +664,7 @@ async def checkout_btc(email, order_id, invoice_db, product, city, state, zipcod
                                    order_state="Processing Payment",
                                    checkout_link=invoice["checkoutLink"],
                                    product_id=product['id'],
+                                   created_at_time=datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                                    btcpay_invoice_id=invoice_id,
                                    btcpay_invoice_state=invoice_state,
                                    btcpay_city=location.city,
@@ -720,6 +745,7 @@ async def checkout_stripe(email, order_id, invoice_db, product):
                            order_state="Processing Payment",
                            checkout_link=checkout_session.url,
                            product_id=product['id'],
+                           created_at_time=datetime.now().strftime("%Y-%m-%dT%H:%M:%S"),
                            stripe_session_id=session_id,
                            stripe_invoice_state=invoice_state)
         invoice_db.add(invoice_db_entry)
@@ -1072,3 +1098,138 @@ async def get_guides():
             guide_list.append(guide)
 
     return {"guides": guide_list}
+
+@app.get("/invoice-stats")
+async def get_invoice_stats(api_key: str, 
+                           invoice_db: Session = Depends(get_invoice_db),
+                           api_usage_db: Session = Depends(get_api_usage_db)):
+    """
+    Get invoice statistics including count by state, monthly totals, sales by location,
+    and API usage statistics. Requires API key for authentication.
+
+    Args:
+        api_key (str): API key for authentication
+        invoice_db (Session): Invoice database session
+        api_usage_db (Session): API usage database session
+
+    Returns:
+        dict: Invoice and API usage statistics
+    """
+    # Check API key using constant-time comparison to prevent timing attacks
+    if 'mycomize_api_key' not in config or not hmac.compare_digest(api_key, config['mycomize_api_key']):
+        log.warning(f"Invalid API key used to access invoice stats")
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    
+    log.info(f"GET: /invoice-stats: Retrieving invoice statistics")
+    
+    try:
+        # Get all invoices
+        invoices = invoice_db.query(Invoice).all()
+        
+        # Count by state
+        state_counts = {
+            "Settled": 0,
+            "Fulfilled": 0,
+            "Processing Payment": 0,
+            "Failed": 0,
+            "Expired": 0,
+            "Canceled": 0
+        }
+        
+        # Get current month and year for monthly sales calculation
+        current_month = datetime.now().month
+        current_year = datetime.now().year
+        current_date = datetime.now().date()
+        
+        # Monthly sales totals
+        monthly_sales = 0.0
+        
+        # Sales by address for BTCPay invoices
+        btc_sales_by_address = {}
+        
+        # Process each invoice
+        for invoice in invoices:
+            # Count by state
+            if invoice.order_state in state_counts:
+                state_counts[invoice.order_state] += 1
+            
+            # Process if it's a fulfilled sale
+            if invoice_fulfilled(invoice) and invoice.fulfillment_time:
+                # Find the product to get its price
+                product = find_product(invoice.product_id)
+                if product:
+                    # Check if it's from the current month based on fulfillment_time
+                    fulfillment_date = datetime.strptime(invoice.fulfillment_time, "%Y-%m-%dT%H:%M:%S")
+                    if fulfillment_date.month == current_month and fulfillment_date.year == current_year:
+                        monthly_sales += product['price']
+                    
+                    # For BTCPay invoices, track sales by address
+                    if invoice.payment_type == 'btc' and hasattr(invoice, 'btcpay_city') and invoice.btcpay_city:
+                        # Create a unique address key
+                        address_key = f"{invoice.btcpay_city}, {invoice.btcpay_state}, {invoice.btcpay_postal_code}, {invoice.btcpay_country}"
+                        
+                        if address_key not in btc_sales_by_address:
+                            btc_sales_by_address[address_key] = {
+                                "city": invoice.btcpay_city,
+                                "state": invoice.btcpay_state,
+                                "postal_code": invoice.btcpay_postal_code,
+                                "country": invoice.btcpay_country,
+                                "total_sales": 0.0,
+                                "invoice_count": 0
+                            }
+                        
+                        btc_sales_by_address[address_key]["total_sales"] += product['price']
+                        btc_sales_by_address[address_key]["invoice_count"] += 1
+        
+        # Get API usage statistics for current month
+        api_usage_stats = {}
+        
+        # Get address validation and email sending counts for current month
+        google_maps_addr_validation_api = api_usage_db.query(ApiUsage).filter(
+            ApiUsage.api_type == 'google_maps_addr_validation_api',
+            ApiUsage.date.between(datetime(current_year, current_month, 1).date(), current_date)
+        ).all()
+        
+        mailersend_api = api_usage_db.query(ApiUsage).filter(
+            ApiUsage.api_type == 'mailersend_api',
+            ApiUsage.date.between(datetime(current_year, current_month, 1).date(), current_date)
+        ).all()
+        
+        # Calculate monthly totals
+        if len(google_maps_addr_validation_api) > 0:
+            google_maps_addr_validation_api_count = sum(entry.count for entry in google_maps_addr_validation_api)
+        else:
+            google_maps_addr_validation_api_count = 0
+
+        if len(mailersend_api) > 0:
+            mailersend_api_count = sum(entry.count for entry in mailersend_api)
+        else:
+            mailersend_api_count = 0
+        
+        api_usage_stats = {
+            "google_maps_addr_validation_api": {
+                "monthly_count": google_maps_addr_validation_api_count,
+                "daily_breakdown": [{"date": entry.date.isoformat(), "count": entry.count} for entry in google_maps_addr_validation_api]
+            },
+            "mailersend_api": {
+                "monthly_count": mailersend_api_count,
+                "daily_breakdown": [{"date": entry.date.isoformat(), "count": entry.count} for entry in mailersend_api]
+            }
+        }
+        
+        # Prepare the response
+        response = {
+            "invoice_counts": state_counts,
+            "monthly_sales": round(monthly_sales, 2),
+            "btc_sales_by_address": list(btc_sales_by_address.values()),
+            "api_usage": api_usage_stats
+        }
+        
+        return response
+    
+    except SQLAlchemyError as e:
+        log.error(f"Database error retrieving invoice stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except Exception as e:
+        log.error(f"Error retrieving invoice stats: {e}")
+        raise HTTPException(status_code=500, detail=f"Error retrieving invoice stats: {str(e)}")
