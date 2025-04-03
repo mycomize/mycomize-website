@@ -89,7 +89,7 @@ function MycomizeGuides({ onClick, guides }) {
                     curve by providing concise yet complete instruction for each
                     step of the growing process.
                 </p>
-                <div className="mt-6 text-lg max-w-2xl">
+                <div className="mt-6 text-xl max-w-2xl">
                     <ul role="list" className="mt-6  space-y-8 text-gray-600">
                         <li className="flex gap-x-3">
                             <p>
@@ -159,7 +159,7 @@ function GuideList({ onClick, guides }) {
                         </li>
                     ))
                 ) : (
-                    <li className="text-center py-4">
+                    <li className="text-center text-lg py-4">
                         <p>No guides available at the moment.</p>
                     </li>
                 )}

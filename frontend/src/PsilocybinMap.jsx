@@ -1,10 +1,53 @@
-import { ComposableMap, Geographies, Geography } from "react-simple-maps";
+// import { useState } from "react";
+import {
+    ComposableMap,
+    Geographies,
+    Geography,
+    // ZoomableGroup, // Commented out zoom functionality
+} from "react-simple-maps";
 import { stateLegalizationData } from "./data/psilocybinLegalizationData";
 
 // USA GeoJSON map data URL
 const geoUrl = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
 
 const PsilocybinMap = () => {
+    // Tooltip state and handlers (commented out)
+    /*
+    const [tooltipContent, setTooltipContent] = useState("");
+    const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+    const [showTooltip, setShowTooltip] = useState(false);
+
+    // Generate tooltip content for a state
+    const getTooltipContent = (geo) => {
+        const stateId = geo.id;
+        const stateName = geo.properties.name;
+        const stateData = stateLegalizationData.find(
+            (state) => state.id === stateId
+        );
+
+        if (!stateData) return `${stateName}: No data available`;
+
+        return `${stateName}: ${stateData.status}\n${stateData.details || ""}`;
+    };
+
+    const handleMouseMove = (event) => {
+        // Position tooltip to the left of the mouse pointer
+        setTooltipPosition({
+            x: event.clientX, // Use exact cursor X position
+            y: event.clientY, // Use exact cursor Y position
+        });
+    };
+
+    const handleMouseEnter = (geo) => {
+        setTooltipContent(getTooltipContent(geo));
+        setShowTooltip(true);
+    };
+
+    const handleMouseLeave = () => {
+        setShowTooltip(false);
+    };
+    */
+
     // Get color for a state based on legalization status
     const getStateColor = (geo) => {
         const stateId = geo.id;
@@ -35,6 +78,8 @@ const PsilocybinMap = () => {
                         scale: 1000,
                     }}
                 >
+                    {/* ZoomableGroup commented out */}
+                    {/* <ZoomableGroup> */}
                     <Geographies geography={geoUrl}>
                         {({ geographies }) =>
                             geographies.map((geo) => (
@@ -53,12 +98,40 @@ const PsilocybinMap = () => {
                                         },
                                         pressed: { outline: "none" },
                                     }}
+                                    // Mouse event handlers commented out
+                                    /*
+                                        onMouseEnter={() =>
+                                            handleMouseEnter(geo)
+                                        }
+                                        onMouseLeave={handleMouseLeave}
+                                        */
                                 />
                             ))
                         }
                     </Geographies>
+                    {/* </ZoomableGroup> */}
                 </ComposableMap>
             </div>
+
+            {/* Tooltip (commented out)
+            {showTooltip && (
+                <div
+                    className="absolute bg-white px-2 py-1 rounded shadow-md text-sm z-10 pointer-events-none whitespace-pre-wrap max-w-[250px] border border-gray-200"
+                    style={{
+                        top: tooltipPosition.y,
+                        left: tooltipPosition.x,
+                        // Position tooltip very close to cursor
+                        transform: `translate(-100%, ${
+                            tooltipPosition.y > window.innerHeight - 100
+                                ? "-100%"
+                                : "0"
+                        })`,
+                    }}
+                >
+                    {tooltipContent}
+                </div>
+            )}
+            */}
 
             {/* Legend */}
             <div className="mt-3 flex flex-wrap justify-center gap-4 p-2 border-t border-gray-200">
