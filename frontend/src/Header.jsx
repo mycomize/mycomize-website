@@ -106,7 +106,7 @@ export function Header() {
                     <PopoverGroup className="hidden lg:flex lg:gap-x-12">
                         {/*<Popover className="relative">
             <PopoverButton className="flex items-center gap-x-1 text-sm/6 lg:text-lg/6 font-semibold text-gray-900">
-              Guides 
+              Guides
               <ChevronDownIcon aria-hidden="true" className="size-5 flex-none text-gray-400" />
             </PopoverButton>
 
@@ -215,9 +215,9 @@ export function Header() {
                                         <img
                                             alt=""
                                             src={mycomizeLogo}
-                                            className="h-16 w-auto"
+                                            className="h-22 w-auto"
                                         />
-                                        <p className="pt-3 ml-3">
+                                        <p className="pt-6 ml-3">
                                             <span className="font-raleway font-semibold text-3xl text-blue-600">
                                                 myco
                                             </span>

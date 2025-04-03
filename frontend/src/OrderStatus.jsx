@@ -11,7 +11,7 @@ async function getInvoice(invoice_id) {
     try {
         const url = import.meta.env.VITE_BACKEND_URL + `/invoice?invoice_id=${invoice_id}`;
         const response = await fetch(url, { method: "GET" });
-        
+
         if (response.ok) {
             return await response.json();
         } else {
@@ -38,30 +38,30 @@ export function OrderStatus() {
 
             const url = import.meta.env.VITE_BACKEND_URL + `/btcpay-webhook-events?invoice_id=${invoiceId}`;
             const eventSource = new EventSource(url);
-            
+
             eventSource.onmessage = (event) => {
                 console.log(`Received new btcpay webhook data: ${event.data}`);
                 const webhookData = JSON.parse(event.data);
 
                 setOrderState(webhookData.order_state);
             };
-            
+
             eventSource.addEventListener("error", (event) => {
                 console.error("BTCPay EventSource failed: ", event.data);
             })
-            
+
             eventSource.onerror = (error) => {
                 console.error("BTCPay EventSource failed:", error);
                 eventSource.close();
             };
-            
+
             return () => {
                 eventSource.close();
             };
         } else if (type === "stripe") {
             const url = import.meta.env.VITE_BACKEND_URL + `/stripe-webhook-events?session_id=${sessionId}`;
             const eventSource = new EventSource(url);
-            
+
             eventSource.onmessage = (event) => {
                 console.log(`Received new stripe webhook data: ${event.data}`);
                 const webhookData = JSON.parse(event.data);
@@ -72,20 +72,20 @@ export function OrderStatus() {
             eventSource.addEventListener("error", (event) => {
                 console.error("Stripe EventSource failed: ", event.data);
             })
-            
+
             eventSource.onerror = (error) => {
                 console.error("Stripe EventSource failed:", error);
                 eventSource.close();
             };
-            
+
             return () => {
                 eventSource.close();
             };
         }
     }, []);
-    
+
     console.log(`orderstate: ${orderState}`);
-    
+
     return (
         <div className="min-h-screen flex flex-col">
             <Header />
@@ -102,7 +102,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
     let text = '';
 
     console.log(`orderstate (in OrderStatusPage): ${order_state}`);
-    
+
     if (!type || !order_id) {
         return <Page404 />;
     }
@@ -110,7 +110,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
     const handleTryAgain = () => {
         navigate('/guides');
     }
-    
+
     if (order_state === 'Fulfilled') {
         status = <h3 className="font-semibold">Order Status: <strong>Fulfilled &#x2705;</strong></h3>;
     } else if (order_state === 'Settled') {
@@ -120,7 +120,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
     } else if (order_state === "Expired") {
         status = <h3 className="font-semibold">Order Status: <strong>Invoice Expired &#x23f0;</strong></h3>;
     }
-    
+
     const order = (
         <>
             <div className="text-xl mt-6">
@@ -132,13 +132,13 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
     );
 
     const support = (
-        <p className="mt-3">If you don't see an email from <strong>mycomize.com</strong>, 
-            please check your spam folder. If you still don't see one, please reach out 
+        <p className="mt-3">If you don't see an email from <strong>mycomize.com</strong>,
+            please check your spam folder. If you still don't see one, please reach out
             for <a href="/contact" className="text-blue-600 font-semibold underline underline-offset-4 decoration-2 decoration-blue-600">support</a>.
         </p>
     );
 
-    let info = ''; 
+    let info = '';
 
     if (type === "BTC") {
         if (order_state === "Fulfilled") {
@@ -161,7 +161,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
 
         text = (
             <>
-                <div className="flex flex-col gap-3 mt-4">
+                <div className="flex flex-col gap-3 mt-4 text-lg">
                     {info}
                     {support}
                 </div>
@@ -188,7 +188,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
         );
 
     }
-    
+
     if (order_state !== "Expired") {
         return (
             <div className="bg-white px-6 py-10 sm:py-20 lg:px-8 flex-grow">
@@ -205,7 +205,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
         if (type === "BTC") {
             text = (
                 <>
-                    <div className="flex flex-col gap-3 mt-2">
+                    <div className="flex flex-col gap-3 mt-2 text-md sm:text-lg">
                         <p>
                             Your BTC invoice has expired. Please try again.
                         </p>
@@ -217,7 +217,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
                 </>
             );
         }
-        
+
         return (
             <div className="bg-white px-6 py-10 sm:py-20 lg:px-8 flex-grow text-md sm:text-lg">
               <div className="mx-auto max-w-3xl text-base/7 text-gray-700">
@@ -225,7 +225,7 @@ function OrderStatusPage({ order_type, order_state, order_id }) {
                   Invoice Expired &#x23f0;
                 </h1>
                 {text}
-                <TryAgainButton onClick={handleTryAgain} /> 
+                <TryAgainButton onClick={handleTryAgain} />
               </div>
             </div>
         );

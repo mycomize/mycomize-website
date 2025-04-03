@@ -2,7 +2,6 @@ import { Header } from "./../Header";
 import { Footer } from "./../Footer";
 import psilocybin_potency from "/psilocybin-potency.png";
 import psilocybin_stability from "/psilocybin-stability.png";
-import PsilocybinMap from "../PsilocybinMap";
 import TableOfContents from "../TableOfContents";
 
 export function BlogPostMicrodosing() {
@@ -828,14 +827,9 @@ function Microdosing() {
                             >
                                 have proposed bills
                             </a>{" "}
-                            for similar changes. Below is a map with the current
-                            status of each state. I will update it as new
-                            changes become available.
+                            for similar changes.
                         </p>
-                        {/* Psilocybin Legalization Map */}
-                        <div className="my-8">
-                            <PsilocybinMap />
-                        </div>
+                        <br/>
                         <h3 className="text-pretty text-2xl font-raleway font-semibold tracking-tight text-gray-900">
                             Health Risk
                         </h3>

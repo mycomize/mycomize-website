@@ -20,7 +20,13 @@ function MycomizeContact() {
                     Contact Us
                 </h1>
                 <p className="mt-6 text-xl/8">
-                    Need support? Have a feature request? We'd love to hear from you! Send an email to
+                    Need support?
+                    <br/>
+                    <br/>
+                    Have a feature request?
+                    <br/>
+                    <br/>
+                    I'd love to hear from you! Send an email to
                     <a href="mailto:connor@mycomize.com" className="text-blue-600"> connor@mycomize.com </a>
                     or reach out directly over social media using the links at the bottom of the page.
                 </p>
