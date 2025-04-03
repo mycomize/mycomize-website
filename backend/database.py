@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, String, Integer, Date
+from sqlalchemy import create_engine, Column, String, Integer, Date, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from datetime import date
@@ -57,22 +57,23 @@ class Invoice(Base):
     btcpay_state = Column(String, nullable=True)
     btcpay_postal_code = Column(String, nullable=True)
     btcpay_country = Column(String, nullable=True)
+    btcpay_sales_tax = Column(Float, nullable=True)
 
 class RateLimit(Base):
     __tablename__ = "rate_limits"
-    
+
     email = Column(String, primary_key=True)
     product_id = Column(String, nullable=False)
     request_count = Column(Integer, nullable=False, default=0)
 
 class ApiUsage(Base):
     __tablename__ = "api_usage"
-    
+
     # Composite primary key of date and api_type
     date = Column(Date, primary_key=True)
     api_type = Column(String, primary_key=True)  # 'address_validation' or 'email_sending'
     count = Column(Integer, nullable=False, default=0)
-    
+
 # Create tables in all databases
 Base.metadata.create_all(bind=prod_invoice_engine)
 Base.metadata.create_all(bind=prod_rate_limit_engine)
@@ -137,30 +138,30 @@ def dump_api_usage_db(db: Session):
     api_usages = db.query(ApiUsage).all()
     print([api_usage.__dict__ for api_usage in api_usages])
 
-async def increment_api_usage(db: Session, api_type: str):
+async def increment_api_usage(db, api_type: str):
     """
     Increment the API usage count for a specific API type on the current date.
-    
+
     Args:
         db (Session): Database session
         api_type (str): Type of API ('address_validation' or 'email_sending')
-        
+
     Returns:
         int: The new count after incrementing
     """
     today = date.today()
     api_usage = db.query(ApiUsage).filter(ApiUsage.date == today, ApiUsage.api_type == api_type).first()
-    
+
     if api_usage is None:
         api_usage = ApiUsage(date=today, api_type=api_type, count=1)
         db.add(api_usage)
     else:
         api_usage.count += 1
-    
+
     db.commit()
-    
+
     # Check if count is a multiple of 500
     if api_usage.count > 0 and api_usage.count % 500 == 0:
         return api_usage.count, True
-    
+
     return api_usage.count, False
