@@ -397,7 +397,6 @@ async def send_email(email, order_id, presigned_url_list, product, type, api_usa
     mailer.set_template(mailersend_template_id, mail_body)
     mailer.set_personalization(personalization, mail_body)
 
-
     response = mailer.send(mail_body).replace('\n', ' ')
 
     # Track email API call
@@ -947,12 +946,13 @@ async def stripe_webhook(request: Request, invoice_db: Session = Depends(get_inv
             log.warning(f"Received webhook {event['type']} for {email} not present in invoices DB")
         return {"status": "success", "message": "Webhook processed successfully"}
 
-async def dequeue_stripe_webhook_data(session_id: str):
+async def dequeue_stripe_webhook_data(session_id: str, invoice_db):
     """
     Stream Stripe webhook events to the client.
 
     Args:
         session_id (str): The Stripe session ID to get events for
+        invoice_db (Session): Invoice database session
 
     Yields:
         str: Server-sent event data
@@ -961,34 +961,57 @@ async def dequeue_stripe_webhook_data(session_id: str):
         yield f"event: error\ndata: session_id is empty\n\n"
 
     while True:
+        queue_empty = True
         try:
             async with stripe_webhook_lock:
                 if session_id in stripe_webhook_queue_map:
+                    queue_empty = False
                     queue = stripe_webhook_queue_map[session_id]
                     data = await asyncio.wait_for(queue.get(), timeout=0.5)
                     yield f"data: {json.dumps(data)}\n\n"
-                else:
-                    yield f"event: error\ndata: invoice not found in stripe_webhook_queue_map\n\n"
+                    invoice_db.expire_all()
         except asyncio.TimeoutError:
-            yield f"event: error\ndata: queue timeout stripe webhook\n\n"
+            invoice = invoice_db.query(Invoice).filter(Invoice.stripe_session_id == session_id).first()
+            if invoice:
+                async with invoice_lock:
+                    data = {"order_state": invoice.order_state}
+                    yield f"data: {json.dumps(data)}\n\n"
+            else:
+                yield f"event: error\ndata: queue timeout stripe webhook\n\n"
         except asyncio.CancelledError:
-            yield f"event: error\ndata: queue cancelled stripe webhook\n\n"
+            invoice = invoice_db.query(Invoice).filter(Invoice.stripe_session_id == session_id).first()
+            if invoice:
+                async with invoice_lock:
+                    data = {"order_state": invoice.order_state}
+                    yield f"data: {json.dumps(data)}\n\n"
+            else:
+                yield f"event: error\ndata: queue cancelled stripe webhook\n\n"
 
-        await asyncio.sleep(0.5)
+        if queue_empty:
+            invoice = invoice_db.query(Invoice).filter(Invoice.stripe_session_id == session_id).first()
+            if invoice:
+                async with invoice_lock:
+                    data = {"order_state": invoice.order_state}
+                    yield f"data: {json.dumps(data)}\n\n"
+            else:
+                yield f"event: error\ndata: session_id {session_id} not found\n\n"
+
+        await asyncio.sleep(2.0)
 
 
 @app.get("/stripe-webhook-events")
-async def stripe_webhook_events(session_id: str):
+async def stripe_webhook_events(session_id: str, invoice_db: Session = Depends(get_invoice_db)):
     """
     Endpoint to stream Stripe webhook events to the client.
 
     Args:
         session_id (str): The Stripe session ID to get events for
+        invoice_db (Session): Invoice db session
 
     Returns:
         StreamingResponse: Server-sent events stream
     """
-    return StreamingResponse(dequeue_stripe_webhook_data(session_id), media_type="text/event-stream")
+    return StreamingResponse(dequeue_stripe_webhook_data(session_id, invoice_db), media_type="text/event-stream")
 
 @app.post("/btcpay-webhook")
 async def btcpay_webhook(request: Request, invoice_db: Session = Depends(get_invoice_db), api_usage_db: Session = Depends(get_api_usage_db)):
@@ -1047,12 +1070,13 @@ async def btcpay_webhook(request: Request, invoice_db: Session = Depends(get_inv
     else:
         log.warning(f"btcpay webhook HMAC verification failed")
 
-async def dequeue_btcpay_webhook_data(invoice_id: str):
+async def dequeue_btcpay_webhook_data(invoice_id: str, invoice_db):
     """
     Stream BTCPay webhook events to the client.
 
     Args:
         invoice_id (str): The BTCPay invoice ID to get events for
+        invoice_db (Sesstion): Invoice database session
 
     Yields:
         str: Server-sent event data
@@ -1061,23 +1085,45 @@ async def dequeue_btcpay_webhook_data(invoice_id: str):
         yield f"event: error\ndata: invoice_id is empty\n\n"
 
     while True:
+        queue_empty = True
         try:
             async with btcpay_webhook_lock:
                 if invoice_id in btcpay_webhook_queue_map:
+                    queue_empty = False
                     queue = btcpay_webhook_queue_map[invoice_id]
                     data = await asyncio.wait_for(queue.get(), timeout=0.5)
                     yield f"data: {json.dumps(data)}\n\n"
-                else:
-                    yield f"event: error\ndata: invoice_id {invoice_id} not found in btcpay_webhook_queue_map\n\n"
+                    invoice_db.expire_all()
         except asyncio.TimeoutError:
-            yield f"event: error\ndata: queue timeout btcpay webhook\n\n"
+            invoice = invoice_db.query(Invoice).filter(Invoice.btcpay_invoice_id == invoice_id).first()
+            if invoice:
+                async with invoice_lock:
+                    data = {"order_state": invoice.order_state}
+                    yield f"data: {json.dumps(data)}\n\n"
+            else:
+                yield f"event: error\ndata: queue timeout btcpay webhook\n\n"
         except asyncio.CancelledError:
-            yield f"event: error\ndata: queue cancelled btcpay webhook\n\n"
+            invoice = invoice_db.query(Invoice).filter(Invoice.btcpay_invoice_id == invoice_id).first()
+            if invoice:
+                async with invoice_lock:
+                    data = {"order_state": invoice.order_state}
+                    yield f"data: {json.dumps(data)}\n\n"
+            else:
+                yield f"event: error\ndata: queue cancelled btcpay webhook\n\n"
 
-        await asyncio.sleep(0.5)
+        if queue_empty:
+            invoice = invoice_db.query(Invoice).filter(Invoice.btcpay_invoice_id == invoice_id).first()
+            if invoice:
+                async with invoice_lock:
+                    data = {"order_state": invoice.order_state}
+                    yield f"data: {json.dumps(data)}\n\n"
+            else:
+                yield f"event: error\ndata: invoice_id {invoice_id} not found\n\n"
+
+        await asyncio.sleep(2.0)
 
 @app.get("/btcpay-webhook-events")
-async def btcpay_webhook_events(invoice_id: str):
+async def btcpay_webhook_events(invoice_id: str, invoice_db: Session = Depends(get_invoice_db)):
     """
     Stream BTCPay webhook events to the client.
 
@@ -1087,7 +1133,7 @@ async def btcpay_webhook_events(invoice_id: str):
     Returns:
         StreamingResponse: Server-sent events stream
     """
-    return StreamingResponse(dequeue_btcpay_webhook_data(invoice_id), media_type="text/event-stream")
+    return StreamingResponse(dequeue_btcpay_webhook_data(invoice_id, invoice_db), media_type="text/event-stream")
 
 @app.get("/guides")
 async def get_guides():
@@ -1194,7 +1240,7 @@ async def get_invoice_stats(api_key: str,
                             }
 
                         btc_sales_by_address[address_key]["total_sales"] += product['price']
-                        btc_sales_by_address[address_key]["total_salex_tax"] += invoice.btcpay_sales_tax
+                        btc_sales_by_address[address_key]["total_sales_tax"] += invoice.btcpay_sales_tax
                         btc_sales_by_address[address_key]["invoice_count"] += 1
 
         # Get API usage statistics for current month
