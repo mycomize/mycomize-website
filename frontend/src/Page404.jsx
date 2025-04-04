@@ -4,17 +4,19 @@ import { Header } from "./Header";
 export function FullPage404() {
     return (
         <>
-            <Header />
-            <Page404 />
-            <Footer />
+            <div id="page_404" className="min-h-screen flex flex-col">
+                <Header />
+                <Page404 />
+                <Footer />
+            </div>
         </>
-    );  
+    );
 }
 
 export function Page404() {
     return (
       <>
-        <main className="grid min-h-full place-items-center bg-white px-6 py-24 sm:py-32 lg:px-8">
+        <main className="grid h-full place-items-center bg-white px-6 py-24 sm:py-32 lg:px-8">
           <div className="text-center">
             <p className="text-xl font-raleway font-semibold text-blue-600">404</p>
             <h1 className="mt-4 text-5xl font-raleway font-semibold tracking-tight text-balance text-gray-900 sm:text-7xl">
@@ -25,12 +27,12 @@ export function Page404() {
             </p>
             <div className="mt-10 flex items-center justify-center gap-x-6">
               <a
-                href="#"
+                href="/"
                 className="rounded-md bg-blue-600 px-3.5 py-2.5 text-sm font-semibold text-white shadow-xs hover:bg-blue-500 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
               >
                 Go back home
               </a>
-              <a href="#" className="text-sm font-semibold text-gray-900">
+              <a href="/contact" className="text-sm font-semibold text-gray-900">
                 Contact support <span aria-hidden="true">&rarr;</span>
               </a>
             </div>
