@@ -5,6 +5,8 @@ import time
 import requests
 import json
 import logging
+import os
+import shutil
 from datetime import datetime
 
 # Setup logging
@@ -155,6 +157,43 @@ def check_backend_log_with_pattern(bot_token, chat_id, backend_service, level, p
     except Exception as e:
         logger.error(f"Error checking {backend_service} {level}: {e}")
 
+def backup_databases(backup_dir, db_dir):
+    """Backup all .db files in the specified directory."""
+    if not backup_dir or not db_dir:
+        logger.warning("Missing backup directory or database directory, skipping database backup")
+        return
+    
+    try:
+        # Create backup directory if it doesn't exist
+        os.makedirs(backup_dir, exist_ok=True)
+        
+        if not os.path.exists(db_dir):
+            logger.warning(f"Database directory {db_dir} does not exist, skipping backup")
+            return
+            
+        db_files_backed_up = 0
+        
+        # Find all .db files in the directory
+        for filename in os.listdir(db_dir):
+            if filename.endswith('.db'):
+                db_path = os.path.join(db_dir, filename)
+                backup_path = os.path.join(backup_dir, f"{filename}.backup")
+                
+                # Using shutil for file copy - safer for binary files than subprocess
+                shutil.copy2(db_path, backup_path)
+                logger.info(f"Backed up {db_path} to {backup_path}")
+                db_files_backed_up += 1
+                
+        if db_files_backed_up == 0:
+            logger.warning(f"No .db files found in {db_dir}")
+        else:
+            logger.info(f"Backed up {db_files_backed_up} database files")
+            
+        return True
+    except Exception as e:
+        logger.error(f"Error backing up databases: {e}")
+        return False
+
 def main():
     """Main function to monitor service and send alerts."""
     config = load_config()
@@ -162,6 +201,14 @@ def main():
     chat_id = config.get('telegram_chat_id')
     check_interval = config.get('check_interval', 120)  # seconds
     systemd_services = config.get('systemd_services', [])
+    backup_dir = config.get('backup_directory')
+    db_dir = config.get('db_dir')
+    
+    if backup_dir and db_dir:
+        logger.info(f"Database backups will be stored in: {backup_dir}")
+        logger.info(f"Database directory to scan for .db files: {db_dir}")
+    else:
+        logger.warning("Missing backup configuration in config, database backups disabled")
 
     if not bot_token or not chat_id:
         logger.error("Telegram bot token or chat ID not configured.")
@@ -173,6 +220,14 @@ def main():
         systemd_state = init_systemd_checks(bot_token, chat_id, systemd_services)
 
     logger.info(f"Monitoring started with check interval of {check_interval} seconds")
+    
+    # Perform initial backup
+    if backup_dir and db_dir:
+        backup_databases(backup_dir, db_dir)
+        
+    # Track time for database backups (every 5 minutes)
+    last_backup_time = time.time()
+    backup_interval = 300  # 5 minutes in seconds
 
     while True:
         # Check systemd services if configured
@@ -187,6 +242,13 @@ def main():
         check_backend_log_with_pattern(bot_token, chat_id, 'mycomize-backend', 'info', "INFO: btcpay webhook:")
         check_backend_log_with_pattern(bot_token, chat_id, 'mycomize-backend', 'info', "INFO: fulfilling order")
         check_backend_log_with_pattern(bot_token, chat_id, 'mycomize-backend', 'info', "INFO: sent fulfillment email")
+        
+        # Check if it's time for a database backup
+        current_time = time.time()
+        if backup_dir and db_dir and (current_time - last_backup_time) >= backup_interval:
+            logger.info("Performing scheduled database backup")
+            backup_databases(backup_dir, db_dir)
+            last_backup_time = current_time
 
         # Sleep for the specified interval
         time.sleep(check_interval)
