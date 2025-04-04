@@ -1210,14 +1210,14 @@ async def get_access_report(api_key: str):
             log.error(f"GoAccess failed: {process.stderr.decode()}")
             raise HTTPException(status_code=500, detail="Failed to generate access report")
         
-        # Read the generated HTML report
-        with open(report_path, 'r') as f:
+        # Read the generated HTML report as binary data
+        with open(report_path, 'rb') as f:
             report_content = f.read()
             
         # Delete the temporary file
         os.unlink(report_path)
         
-        # Return the HTML content as a response
+        # Return the HTML content as a binary response
         return StreamingResponse(
             iter([report_content]), 
             media_type="text/html"
