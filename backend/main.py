@@ -720,8 +720,14 @@ async def checkout_stripe(email, order_id, invoice_db, product):
                         invoice_db.delete(invoice)
                         invoice_db.commit()
                 else:
-                    log.error(f"invoice (stripe): email={email} already has a btc invoice. Only one payment type supported")
-                    return {"error": "error_only_one_payment_type_supported"}
+                    # User is switching payment types
+                    if invoice_fulfilled(invoice) or invoice_settled(invoice):
+                        log.error(f"invoice (stripe): email={email} already has a btc invoice. Only one payment type supported")
+                        return {"error": "error_only_one_payment_type_supported"}
+                    else:
+                        log.warning(f"invoice (btcpay -> stripe): btcpay_invoice_id={invoice.btcpay_invoice_id} btcpay_state={invoice.btcpay_invoice_state} email={email} deleting from DB")
+                        invoice_db.delete(invoice)
+                        invoice_db.commit()
 
         success_url = frontend_url + "/order-status?type=stripe&order_id=" + order_id + "&session_id={CHECKOUT_SESSION_ID}"
         cancel_url = frontend_url + "/guides"
@@ -1040,6 +1046,10 @@ async def btcpay_webhook(request: Request, invoice_db: Session = Depends(get_inv
 
         if invoice:
             async with invoice_lock:
+                if invoice.payment_type == 'stripe':
+                    log.warning(f"invoice (btcpay): email={email} received btcpay webhook but has a stripe invoice. Doing nothing")
+                    return
+
                 invoice_state = invoice.btcpay_invoice_state
                 if invoice_state == "InvoiceSettled":
                     log.warning(f"invoice (btcpay): received webhook {state} but state={invoice_state}. Doing nothing. email={email}")
@@ -1188,41 +1198,41 @@ async def get_access_report(api_key: str):
 
         # Run GoAccess to generate the HTML report
         nginx_log_path = "/var/log/nginx/access.log"
-        
+
         # Check if the log file exists
         if not os.path.exists(nginx_log_path):
             log.error(f"Nginx log file not found at {nginx_log_path}")
             raise HTTPException(status_code=500, detail="Nginx log file not found")
-            
+
         # Execute GoAccess with the specified log file and output path
         process = subprocess.run(
             [
-                "goaccess", 
-                nginx_log_path, 
-                "-o", report_path, 
+                "goaccess",
+                nginx_log_path,
+                "-o", report_path,
                 "--log-format=COMBINED"
             ],
             check=True,
             capture_output=True
         )
-        
+
         if process.returncode != 0:
             log.error(f"GoAccess failed: {process.stderr.decode()}")
             raise HTTPException(status_code=500, detail="Failed to generate access report")
-        
+
         # Read the generated HTML report as binary data
         with open(report_path, 'rb') as f:
             report_content = f.read()
-            
+
         # Delete the temporary file
         os.unlink(report_path)
-        
+
         # Return the HTML content as a binary response
         return StreamingResponse(
-            iter([report_content]), 
+            iter([report_content]),
             media_type="text/html"
         )
-    
+
     except subprocess.CalledProcessError as e:
         log.error(f"GoAccess command failed: {e.stderr.decode() if e.stderr else str(e)}")
         raise HTTPException(status_code=500, detail=f"GoAccess command failed: {str(e)}")
